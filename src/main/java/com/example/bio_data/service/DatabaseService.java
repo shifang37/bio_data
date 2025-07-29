@@ -102,4 +102,33 @@ public class DatabaseService {
         String sql = "SHOW INDEX FROM " + tableName;
         return jdbcTemplate.queryForList(sql);
     }
+
+    /**
+     * 向表中插入数据
+     */
+    public int insertTableData(String tableName, Map<String, Object> data) {
+        if (data == null || data.isEmpty()) {
+            throw new IllegalArgumentException("插入数据不能为空");
+        }
+
+        // 构建插入SQL
+        StringBuilder columns = new StringBuilder();
+        StringBuilder values = new StringBuilder();
+        List<Object> params = new ArrayList<>();
+
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            if (columns.length() > 0) {
+                columns.append(", ");
+                values.append(", ");
+            }
+            columns.append("`").append(entry.getKey()).append("`");
+            values.append("?");
+            params.add(entry.getValue());
+        }
+
+        String sql = String.format("INSERT INTO %s (%s) VALUES (%s)", 
+                tableName, columns.toString(), values.toString());
+        
+        return jdbcTemplate.update(sql, params.toArray());
+    }
 } 

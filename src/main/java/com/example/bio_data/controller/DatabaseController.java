@@ -111,6 +111,28 @@ public class DatabaseController {
     }
 
     /**
+     * 向表中插入数据
+     */
+    @PostMapping("/tables/{tableName}/data")
+    public ResponseEntity<?> insertTableData(
+            @PathVariable String tableName,
+            @RequestBody Map<String, Object> data) {
+        try {
+            int result = databaseService.insertTableData(tableName, data);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "数据插入成功",
+                "affectedRows", result
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "error", "数据插入失败: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
      * 健康检查
      */
     @GetMapping("/health")
