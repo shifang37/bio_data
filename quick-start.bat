@@ -6,13 +6,15 @@ echo ========================================
 echo.
 
 echo Starting backend service...
-start "Backend" cmd /k "cd /d %~dp0 && .\mvnw.cmd spring-boot:run"
+cd backend
+.\mvnw.cmd spring-boot:run
 
 echo Waiting 3 seconds...
 timeout /t 3 /nobreak >nul
 
 echo Starting frontend service...
-start "Frontend" cmd /k "cd /d %~dp0\frontend && npm run dev"
+cd frontend
+npm run dev
 
 echo.
 echo ========================================
