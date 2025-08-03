@@ -12,6 +12,7 @@
 ### 1. 准备测试数据
 
 创建一个测试表（如果不存在）：
+
 ```sql
 CREATE TABLE test_import (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -22,6 +23,7 @@ CREATE TABLE test_import (
 ```
 
 插入一些初始数据：
+
 ```sql
 INSERT INTO test_import (name, email, age) VALUES 
 ('张三', 'zhangsan@test.com', 25),
@@ -32,6 +34,7 @@ INSERT INTO test_import (name, email, age) VALUES
 ### 2. 准备CSV测试文件
 
 #### 文件1：test_append.csv（追加模式测试）
+
 ```csv
 name,email,age
 张三,zhangsan@test.com,25
@@ -40,6 +43,7 @@ name,email,age
 ```
 
 #### 文件2：test_overwrite.csv（覆盖模式测试）
+
 ```csv
 name,email,age
 新用户1,newuser1@test.com,22
@@ -62,6 +66,7 @@ name,email,age
 7. 点击"开始导入"
 
 **预期结果**：
+
 - 系统应该检测到"张三"的记录已存在，跳过该记录
 - 成功导入"赵六"和"钱七"两条新记录
 - 导入结果显示：
@@ -81,6 +86,7 @@ name,email,age
 5. 点击"开始导入"
 
 **预期结果**：
+
 - 系统应该先删除表中的所有数据
 - 然后导入CSV文件中的3条新记录
 - 导入结果显示：
@@ -94,17 +100,20 @@ name,email,age
 ### 数据库查询验证
 
 测试前查询表数据：
+
 ```sql
 SELECT * FROM test_import ORDER BY id;
 ```
 
 追加模式测试后查询：
+
 ```sql
 SELECT * FROM test_import ORDER BY id;
 -- 应该看到原有数据 + 新增的"赵六"和"钱七"
 ```
 
 覆盖模式测试后查询：
+
 ```sql
 SELECT * FROM test_import ORDER BY id;
 -- 应该只看到CSV文件中的3条新记录
@@ -115,6 +124,7 @@ SELECT * FROM test_import ORDER BY id;
 ### 1. 无主键表测试
 
 创建一个没有主键的表：
+
 ```sql
 CREATE TABLE test_no_pk (
     name VARCHAR(100),
@@ -128,6 +138,7 @@ CREATE TABLE test_no_pk (
 ### 2. 复合主键表测试
 
 创建复合主键表：
+
 ```sql
 CREATE TABLE test_composite_pk (
     user_id INT,
@@ -181,11 +192,13 @@ CREATE TABLE test_composite_pk (
 ## 新增功能总结
 
 ### 前端更新
+
 - 在导入设置中添加了"导入策略"选项
 - 导入确认对话框显示选择的策略信息
 - 导入结果显示跳过的重复记录数和删除的记录数
 
 ### 后端更新
+
 - 新增 `batchInsertTableDataWithStrategy` 方法支持策略选择
 - 新增 `batchInsertTableDataTransactionWithStrategy` 方法支持事务性策略导入
 - 实现覆盖模式：先DELETE后INSERT

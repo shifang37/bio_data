@@ -36,6 +36,7 @@ datasource.secondary.name=bio_data2
 要添加更多数据源，可以通过以下方式：
 
 #### 方式1：配置文件（需要重启）
+
 在 `DataSourceConfig.java` 中添加新的数据源Bean：
 
 ```java
@@ -47,6 +48,7 @@ public DataSource thirdDataSource() {
 ```
 
 #### 方式2：动态添加（推荐）
+
 通过API动态添加，无需重启：
 
 ```bash
@@ -65,11 +67,13 @@ curl -X POST http://localhost:8080/api/database/datasources \
 ### 数据源管理接口
 
 #### 1. 获取所有数据源
+
 ```http
 GET /api/database/datasources
 ```
 
 响应示例：
+
 ```json
 [
   {
@@ -88,6 +92,7 @@ GET /api/database/datasources
 ```
 
 #### 2. 添加新数据源
+
 ```http
 POST /api/database/datasources
 Content-Type: application/json
@@ -101,16 +106,19 @@ Content-Type: application/json
 ```
 
 #### 3. 删除数据源
+
 ```http
 DELETE /api/database/datasources/{dataSourceName}
 ```
 
 #### 4. 测试数据源连接
+
 ```http
 GET /api/database/datasources/{dataSourceName}/test
 ```
 
 #### 5. 获取数据源统计信息
+
 ```http
 GET /api/database/datasources/{dataSourceName}/stats
 ```
@@ -120,6 +128,7 @@ GET /api/database/datasources/{dataSourceName}/stats
 所有原有的数据库操作接口都支持可选的 `dataSource` 参数：
 
 #### 1. 获取表列表
+
 ```http
 # 使用默认数据源
 GET /api/database/tables
@@ -129,6 +138,7 @@ GET /api/database/tables?dataSource=bio_data2
 ```
 
 #### 2. 获取表数据
+
 ```http
 # 使用默认数据源
 GET /api/database/tables/user_table/data?limit=100
@@ -138,6 +148,7 @@ GET /api/database/tables/user_table/data?limit=100&dataSource=bio_data2
 ```
 
 #### 3. 执行SQL查询
+
 ```http
 POST /api/database/query
 Content-Type: application/json
@@ -150,6 +161,7 @@ Content-Type: application/json
 ```
 
 #### 4. 插入数据
+
 ```http
 POST /api/database/tables/{tableName}/data
 Content-Type: application/json
@@ -247,4 +259,4 @@ curl -X POST http://localhost:8080/api/database/query -d '{"sql": "SELECT 1"}'
 2. **数据源分组**：支持数据源分组管理
 3. **读写分离**：支持主从数据库配置
 4. **负载均衡**：在多个相同数据源之间进行负载均衡
-5. **监控告警**：添加数据源连接状态监控和告警机制 
+5. **监控告警**：添加数据源连接状态监控和告警机制
