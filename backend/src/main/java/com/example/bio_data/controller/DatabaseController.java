@@ -1417,6 +1417,85 @@ public class DatabaseController {
     }
 
     /**
+     * 自动建表并导入CSV数据
+     */
+    @PostMapping("/auto-create-table-import")
+    public ResponseEntity<?> autoCreateTableAndImport(@RequestBody Map<String, Object> request) {
+        try {
+            String dataSource = (String) request.get("dataSource");
+            String tableName = (String) request.get("tableName");
+            Long userId = extractUserId(request);
+            String userType = (String) request.get("userType");
+            Boolean useTransaction = (Boolean) request.get("useTransaction");
+            String importStrategy = (String) request.get("importStrategy");
+            
+            // 权限验证
+            if (userId == null) {
+                return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
+            }
+            
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "write");
+            if (permissionCheck != null) {
+                return permissionCheck;
+            }
+            
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> csvData = (List<Map<String, Object>>) request.get("csvData");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> csvColumns = (List<Map<String, Object>>) request.get("csvColumns");
+            String primaryKeyColumn = (String) request.get("primaryKeyColumn");
+            
+            if (csvData == null || csvData.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "CSV数据不能为空"));
+            }
+            
+            if (csvColumns == null || csvColumns.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "CSV列信息不能为空"));
+            }
+            
+            if (tableName == null || tableName.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "表名不能为空"));
+            }
+            
+            // 限制单次批量插入的数据量
+            if (csvData.size() > 100000) {
+                return ResponseEntity.badRequest().body(Map.of("error", "单次批量插入数据量不能超过10万条"));
+            }
+            
+            // 设置默认导入策略
+            if (importStrategy == null || importStrategy.trim().isEmpty()) {
+                importStrategy = "append";
+            }
+            
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "chembl33";
+            
+            Map<String, Object> result;
+            if (useTransaction != null && useTransaction) {
+                // 使用事务性自动建表并导入
+                result = databaseService.autoCreateTableAndImportDataTransaction(actualDataSource, tableName, csvData, csvColumns, importStrategy);
+            } else {
+                // 使用非事务性自动建表并导入
+                result = databaseService.autoCreateTableAndImportData(actualDataSource, tableName, csvData, csvColumns, importStrategy);
+            }
+            
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "自动建表并导入完成",
+                "result", result
+            ));
+            
+        } catch (Exception e) {
+            String errorMessage = e.getMessage();
+            String friendlyMessage = translateDataInsertError(errorMessage);
+            
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "error", friendlyMessage
+            ));
+        }
+    }
+
+    /**
      * 验证CSV数据格式
      */
     @PostMapping("/tables/{tableName}/validate-csv")

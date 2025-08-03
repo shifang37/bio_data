@@ -405,6 +405,11 @@ export const databaseApi = {
     return api.get('/api/database/cache/stats', {
       params: { userId, userType }
     })
+  },
+
+  // 自动建表并导入数据
+  autoCreateTableAndImport(importData) {
+    return api.post('/api/database/auto-create-table-import', importData)
   }
 }
 

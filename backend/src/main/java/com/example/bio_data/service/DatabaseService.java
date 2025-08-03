@@ -2977,6 +2977,23 @@ public class DatabaseService {
     }
     
     /**
+     * 获取用户选择的主键列（用于自动建表的重复检测）
+     */
+    private List<String> getUserSelectedPrimaryKeys(List<Map<String, Object>> csvColumns) {
+        List<String> primaryKeys = new ArrayList<>();
+        
+        for (Map<String, Object> column : csvColumns) {
+            Boolean isPrimaryKey = (Boolean) column.get("isPrimaryKey");
+            if (isPrimaryKey != null && isPrimaryKey) {
+                String columnName = sanitizeColumnName((String) column.get("columnName"));
+                primaryKeys.add(columnName);
+            }
+        }
+        
+        return primaryKeys;
+    }
+    
+    /**
      * 基于主键过滤重复数据
      */
     private List<Map<String, Object>> filterDuplicatesByPrimaryKeys(String dataSourceName, String tableName, 
@@ -3111,6 +3128,381 @@ public class DatabaseService {
             logger.error("基于所有列过滤重复数据失败: {}", e.getMessage());
             return dataList; // 出错时返回原始数据
         }
+    }
+
+    /**
+     * 自动建表并导入数据（非事务性）
+     */
+    public Map<String, Object> autoCreateTableAndImportData(String dataSourceName, String tableName, List<Map<String, Object>> csvData, List<Map<String, Object>> csvColumns, String importStrategy) {
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            logger.info("开始自动建表并导入 - 数据源: {}, 表名: {}, 记录数: {}, 策略: {}", dataSourceName, tableName, csvData.size(), importStrategy);
+            
+            // 1. 检查表是否已存在
+            boolean tableExists = checkTableExists(dataSourceName, tableName);
+            
+            if (!tableExists) {
+                // 2. 表不存在，创建表
+                createTableFromCsvColumns(dataSourceName, tableName, csvColumns, csvData);
+                logger.info("成功创建表: {}", tableName);
+            } else {
+                logger.info("表已存在: {}，将根据策略进行导入", tableName);
+            }
+            
+            // 3. 导入数据
+            Map<String, Object> importResult;
+            if ("overwrite".equals(importStrategy)) {
+                importResult = batchInsertTableDataWithOverwrite(dataSourceName, tableName, csvData);
+            } else {
+                // 对于自动建表的追加模式，需要传递CSV列信息以获取用户选择的主键
+                importResult = batchInsertTableDataWithAppendForAutoCreate(dataSourceName, tableName, csvData, csvColumns);
+            }
+            
+            // 4. 更新结果信息
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
+            importResult.put("duration", duration);
+            importResult.put("tableCreated", !tableExists);
+            importResult.put("autoCreateTable", true);
+            
+            logger.info("自动建表并导入完成 - 表: {}, 是否新建: {}, 导入结果: {}", tableName, !tableExists, importResult);
+            
+            return importResult;
+            
+        } catch (Exception e) {
+            logger.error("自动建表并导入失败: {}", e.getMessage(), e);
+            throw new RuntimeException("自动建表并导入失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 自动建表并导入数据（事务性）
+     */
+    @Transactional
+    public Map<String, Object> autoCreateTableAndImportDataTransaction(String dataSourceName, String tableName, List<Map<String, Object>> csvData, List<Map<String, Object>> csvColumns, String importStrategy) {
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            logger.info("开始事务性自动建表并导入 - 数据源: {}, 表名: {}, 记录数: {}, 策略: {}", dataSourceName, tableName, csvData.size(), importStrategy);
+            
+            // 1. 检查表是否已存在
+            boolean tableExists = checkTableExists(dataSourceName, tableName);
+            
+            if (!tableExists) {
+                // 2. 表不存在，创建表
+                createTableFromCsvColumns(dataSourceName, tableName, csvColumns, csvData);
+                logger.info("成功创建表: {}", tableName);
+            } else {
+                logger.info("表已存在: {}，将根据策略进行导入", tableName);
+            }
+            
+            // 3. 导入数据
+            Map<String, Object> importResult;
+            if ("overwrite".equals(importStrategy)) {
+                importResult = batchInsertTableDataTransactionWithOverwrite(dataSourceName, tableName, csvData);
+            } else {
+                // 对于自动建表的追加模式，需要传递CSV列信息以获取用户选择的主键
+                importResult = batchInsertTableDataTransactionWithAppendForAutoCreate(dataSourceName, tableName, csvData, csvColumns);
+            }
+            
+            // 4. 更新结果信息
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
+            importResult.put("duration", duration);
+            importResult.put("tableCreated", !tableExists);
+            importResult.put("autoCreateTable", true);
+            
+            logger.info("事务性自动建表并导入完成 - 表: {}, 是否新建: {}, 导入结果: {}", tableName, !tableExists, importResult);
+            
+            return importResult;
+            
+        } catch (Exception e) {
+            logger.error("事务性自动建表并导入失败: {}", e.getMessage(), e);
+            throw new RuntimeException("事务性自动建表并导入失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 检查表是否存在
+     */
+    private boolean checkTableExists(String dataSourceName, String tableName) {
+        try {
+            JdbcTemplate jdbcTemplate;
+            String sql;
+            
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+                sql = "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
+                Integer count = jdbcTemplate.queryForObject(sql, Integer.class, dataSourceName, tableName);
+                return count != null && count > 0;
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+                sql = "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?";
+                Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tableName);
+                return count != null && count > 0;
+            }
+        } catch (Exception e) {
+            logger.warn("检查表是否存在时出错: {}", e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 根据CSV列信息创建表
+     */
+    private void createTableFromCsvColumns(String dataSourceName, String tableName, List<Map<String, Object>> csvColumns, List<Map<String, Object>> csvData) {
+        try {
+            JdbcTemplate jdbcTemplate;
+            
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+            }
+            
+            // 构建创建表的SQL
+            StringBuilder createTableSql = new StringBuilder();
+            if (isUserCreatedDatabase(dataSourceName)) {
+                createTableSql.append("CREATE TABLE `").append(dataSourceName).append("`.`").append(tableName).append("` (");
+            } else {
+                createTableSql.append("CREATE TABLE `").append(tableName).append("` (");
+            }
+            
+            // 添加CSV列
+            String primaryKeyColumn = null;
+            
+            // 从CSV列信息中获取用户选择的主键
+            for (Map<String, Object> column : csvColumns) {
+                Boolean isPrimaryKey = (Boolean) column.get("isPrimaryKey");
+                if (isPrimaryKey != null && isPrimaryKey) {
+                    primaryKeyColumn = sanitizeColumnName((String) column.get("columnName"));
+                    break;
+                }
+            }
+            
+            for (int i = 0; i < csvColumns.size(); i++) {
+                Map<String, Object> column = csvColumns.get(i);
+                String columnName = (String) column.get("columnName");
+                String dataType = (String) column.get("inferredType");
+                
+                // 清理列名，确保合法
+                columnName = sanitizeColumnName(columnName);
+                
+                // 如果这是用户选择的主键列
+                if (columnName.equals(primaryKeyColumn)) {
+                    // 移除AUTO_INCREMENT关键字，因为用户可能选择非自增主键
+                    String cleanDataType = dataType.replace("AUTO_INCREMENT", "").trim();
+                    createTableSql.append("`").append(columnName).append("` ").append(cleanDataType).append(" PRIMARY KEY");
+                } else {
+                    // 普通列，移除AUTO_INCREMENT关键字
+                    String cleanDataType = dataType.replace("AUTO_INCREMENT", "").trim();
+                    createTableSql.append("`").append(columnName).append("` ").append(cleanDataType);
+                }
+                
+                if (i < csvColumns.size() - 1) {
+                    createTableSql.append(", ");
+                }
+            }
+            
+            createTableSql.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            
+            logger.info("创建表SQL: {}", createTableSql.toString());
+            
+            // 执行创建表SQL
+            jdbcTemplate.execute(createTableSql.toString());
+            
+            logger.info("成功创建表: {} 包含 {} 个字段", tableName, csvColumns.size());
+            
+        } catch (Exception e) {
+            logger.error("创建表失败: {}", e.getMessage(), e);
+            throw new RuntimeException("创建表失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 清理列名，确保符合MySQL命名规范
+     */
+    private String sanitizeColumnName(String columnName) {
+        if (columnName == null || columnName.trim().isEmpty()) {
+            return "column_" + System.currentTimeMillis();
+        }
+        
+        // 移除非法字符，只保留字母、数字和下划线
+        String sanitized = columnName.replaceAll("[^a-zA-Z0-9_]", "_");
+        
+        // 确保以字母或下划线开头
+        if (!sanitized.matches("^[a-zA-Z_].*")) {
+            sanitized = "col_" + sanitized;
+        }
+        
+        // 限制长度（MySQL列名最大64字符）
+        if (sanitized.length() > 60) {
+            sanitized = sanitized.substring(0, 60);
+        }
+        
+        // 避免MySQL保留字冲突
+        if (isReservedWord(sanitized.toUpperCase())) {
+            sanitized = "col_" + sanitized;
+        }
+        
+        return sanitized;
+    }
+    
+    /**
+     * 自动建表模式的追加导入（基于用户选择的主键进行重复检测）
+     */
+    private Map<String, Object> batchInsertTableDataWithAppendForAutoCreate(String dataSourceName, String tableName, 
+            List<Map<String, Object>> dataList, List<Map<String, Object>> csvColumns) {
+        long startTime = System.currentTimeMillis();
+        int totalRecords = dataList.size();
+        int skippedCount = 0;
+        List<String> errors = new ArrayList<>();
+        
+        try {
+            logger.info("自动建表追加模式：开始检测重复数据 - 数据源: {}, 表名: {}, 记录数: {}", dataSourceName, tableName, totalRecords);
+            
+            // 获取用户选择的主键列
+            List<String> userSelectedPrimaryKeys = getUserSelectedPrimaryKeys(csvColumns);
+            
+            List<Map<String, Object>> uniqueDataList = new ArrayList<>();
+            
+            if (userSelectedPrimaryKeys.isEmpty()) {
+                // 没有选择主键，使用所有列进行重复检测
+                logger.info("自动建表追加模式：用户未选择主键，使用全行比较检测重复");
+                uniqueDataList = filterDuplicatesByAllColumns(dataSourceName, tableName, dataList);
+                skippedCount = totalRecords - uniqueDataList.size();
+            } else {
+                // 有用户选择的主键，使用主键进行重复检测
+                logger.info("自动建表追加模式：使用用户选择的主键进行重复检测 - 主键列: {}", userSelectedPrimaryKeys);
+                uniqueDataList = filterDuplicatesByPrimaryKeys(dataSourceName, tableName, dataList, userSelectedPrimaryKeys);
+                skippedCount = totalRecords - uniqueDataList.size();
+            }
+            
+            logger.info("自动建表追加模式：重复检测完成 - 原始记录: {}, 去重后: {}, 跳过: {}", totalRecords, uniqueDataList.size(), skippedCount);
+            
+            if (uniqueDataList.isEmpty()) {
+                // 所有数据都是重复的
+                Map<String, Object> result = new HashMap<>();
+                result.put("totalRecords", totalRecords);
+                result.put("successCount", 0);
+                result.put("failureCount", 0);
+                result.put("skippedCount", skippedCount);
+                result.put("duration", System.currentTimeMillis() - startTime);
+                result.put("errors", errors);
+                result.put("importStrategy", "append");
+                result.put("message", "所有数据都已存在，无需导入");
+                
+                logger.info("自动建表追加模式：所有数据都是重复的，跳过导入");
+                return result;
+            }
+            
+            // 调用正常的批量插入处理去重后的数据
+            Map<String, Object> insertResult = batchInsertTableData(dataSourceName, tableName, uniqueDataList);
+            
+            // 更新结果信息
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
+            insertResult.put("duration", duration);
+            insertResult.put("skippedCount", skippedCount);
+            insertResult.put("importStrategy", "append");
+            
+            logger.info("自动建表追加模式批量插入完成 - 跳过重复: {}, 插入结果: {}", skippedCount, insertResult);
+            
+            return insertResult;
+            
+        } catch (Exception e) {
+            logger.error("自动建表追加模式批量插入失败: {}", e.getMessage(), e);
+            throw new RuntimeException("自动建表追加模式批量插入失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 自动建表模式的事务性追加导入
+     */
+    @Transactional
+    private Map<String, Object> batchInsertTableDataTransactionWithAppendForAutoCreate(String dataSourceName, String tableName, 
+            List<Map<String, Object>> dataList, List<Map<String, Object>> csvColumns) {
+        long startTime = System.currentTimeMillis();
+        int totalRecords = dataList.size();
+        int skippedCount = 0;
+        
+        try {
+            logger.info("事务性自动建表追加模式：开始检测重复数据 - 数据源: {}, 表名: {}, 记录数: {}", dataSourceName, tableName, totalRecords);
+            
+            // 获取用户选择的主键列
+            List<String> userSelectedPrimaryKeys = getUserSelectedPrimaryKeys(csvColumns);
+            
+            List<Map<String, Object>> uniqueDataList = new ArrayList<>();
+            
+            if (userSelectedPrimaryKeys.isEmpty()) {
+                // 没有选择主键，使用所有列进行重复检测
+                logger.info("事务性自动建表追加模式：用户未选择主键，使用全行比较检测重复");
+                uniqueDataList = filterDuplicatesByAllColumns(dataSourceName, tableName, dataList);
+                skippedCount = totalRecords - uniqueDataList.size();
+            } else {
+                // 有用户选择的主键，使用主键进行重复检测
+                logger.info("事务性自动建表追加模式：使用用户选择的主键进行重复检测 - 主键列: {}", userSelectedPrimaryKeys);
+                uniqueDataList = filterDuplicatesByPrimaryKeys(dataSourceName, tableName, dataList, userSelectedPrimaryKeys);
+                skippedCount = totalRecords - uniqueDataList.size();
+            }
+            
+            logger.info("事务性自动建表追加模式：重复检测完成 - 原始记录: {}, 去重后: {}, 跳过: {}", totalRecords, uniqueDataList.size(), skippedCount);
+            
+            if (uniqueDataList.isEmpty()) {
+                // 所有数据都是重复的
+                Map<String, Object> result = new HashMap<>();
+                result.put("totalRecords", totalRecords);
+                result.put("successCount", 0);
+                result.put("failureCount", 0);
+                result.put("skippedCount", skippedCount);
+                result.put("duration", System.currentTimeMillis() - startTime);
+                result.put("errors", new ArrayList<>());
+                result.put("importStrategy", "append");
+                result.put("message", "所有数据都已存在，无需导入");
+                
+                logger.info("事务性自动建表追加模式：所有数据都是重复的，跳过导入");
+                return result;
+            }
+            
+            // 调用事务性批量插入处理去重后的数据
+            Map<String, Object> insertResult = batchInsertTableDataTransaction(dataSourceName, tableName, uniqueDataList);
+            
+            // 更新结果信息
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
+            insertResult.put("duration", duration);
+            insertResult.put("skippedCount", skippedCount);
+            insertResult.put("importStrategy", "append");
+            
+            logger.info("事务性自动建表追加模式批量插入完成 - 跳过重复: {}, 插入结果: {}", skippedCount, insertResult);
+            
+            return insertResult;
+            
+        } catch (Exception e) {
+            logger.error("事务性自动建表追加模式批量插入失败: {}", e.getMessage(), e);
+            throw new RuntimeException("事务性自动建表追加模式批量插入失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 检查是否为MySQL保留字
+     */
+    private boolean isReservedWord(String word) {
+        String[] reservedWords = {
+            "SELECT", "INSERT", "UPDATE", "DELETE", "FROM", "WHERE", "ORDER", "GROUP", 
+            "BY", "HAVING", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "ON", "AS", 
+            "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "IS", "NULL", "TRUE", "FALSE",
+            "CREATE", "DROP", "ALTER", "TABLE", "INDEX", "PRIMARY", "KEY", "FOREIGN",
+            "REFERENCES", "CONSTRAINT", "UNIQUE", "DEFAULT", "AUTO_INCREMENT"
+        };
+        
+        for (String reserved : reservedWords) {
+            if (reserved.equals(word)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -41,6 +41,16 @@
           </el-upload>
 
           <div v-if="fileList.length > 0" style="margin-top: 20px;">
+            <el-form-item label="导入方式">
+              <el-radio-group v-model="importMethod" @change="onImportMethodChange">
+                <el-radio label="existing">导入到现有表</el-radio>
+                <el-radio label="auto-create">自动建表导入</el-radio>
+              </el-radio-group>
+              <div style="color: #999; font-size: 12px; margin-top: 5px;">
+                自动建表模式将根据CSV文件字段自动创建表，表名为文件名
+              </div>
+            </el-form-item>
+
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="目标数据库">
@@ -54,7 +64,7 @@
                   </el-select>
                 </el-form-item>
               </el-col>
-              <el-col :span="12">
+              <el-col :span="12" v-if="importMethod === 'existing'">
                 <el-form-item label="目标表">
                   <el-select v-model="selectedTable" placeholder="选择目标表" @change="loadTableColumns">
                     <el-option
@@ -64,6 +74,18 @@
                       :value="item.TABLE_NAME"
                     />
                   </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12" v-if="importMethod === 'auto-create'">
+                <el-form-item label="新表名">
+                  <el-input 
+                    v-model="autoTableName" 
+                    placeholder="将使用CSV文件名作为表名"
+                    :disabled="true"
+                  />
+                  <div style="color: #999; font-size: 12px; margin-top: 5px;">
+                    系统将自动根据文件名创建表：{{ autoTableName }}
+                  </div>
                 </el-form-item>
               </el-col>
             </el-row>
@@ -97,7 +119,7 @@
             <el-button 
               type="primary" 
               @click="parseFile" 
-              :disabled="!selectedDataSource || !selectedTable"
+              :disabled="!selectedDataSource || (importMethod === 'existing' && !selectedTable)"
             >
               解析文件
             </el-button>
@@ -108,15 +130,62 @@
         <div v-if="currentStep === 1">
           <div style="margin-bottom: 20px;">
             <el-alert
-              title="数据预览"
+              :title="importMethod === 'auto-create' ? '数据预览（自动建表模式）' : '数据预览'"
               :description="`解析到 ${parsedData.length} 条记录，显示前 ${Math.min(10, parsedData.length)} 条`"
               type="info"
               show-icon
             />
           </div>
 
-          <!-- 列映射 -->
-          <div v-if="showColumnMapping" style="margin-bottom: 20px;">
+          <!-- 自动建表模式的表结构预览 -->
+          <div v-if="importMethod === 'auto-create'" style="margin-bottom: 20px;">
+            <h4>自动建表信息</h4>
+            <el-descriptions border :column="2">
+              <el-descriptions-item label="表名">{{ autoTableName }}</el-descriptions-item>
+              <el-descriptions-item label="字段数量">{{ csvColumns.length }}</el-descriptions-item>
+            </el-descriptions>
+            
+            <h4 style="margin-top: 15px;">字段信息预览</h4>
+            <div style="margin-bottom: 10px;">
+              <el-alert
+                title="主键选择说明"
+                description="请选择一个字段作为主键，主键用于唯一标识记录和重复检测。如果不选择主键，系统将使用全行比较进行重复检测。"
+                type="info"
+                show-icon
+                :closable="false"
+              />
+            </div>
+            <el-table :data="csvColumnsWithTypes" style="width: 100%; margin-bottom: 20px;">
+              <el-table-column label="主键" width="80" align="center">
+                <template #default="scope">
+                  <el-radio 
+                    v-model="selectedPrimaryKey" 
+                    :label="scope.row.columnName"
+                    @change="updatePrimaryKeySelection"
+                  >
+                    <span></span>
+                  </el-radio>
+                </template>
+              </el-table-column>
+              <el-table-column prop="columnName" label="字段名" width="200">
+                <template #default="scope">
+                  <span>{{ scope.row.columnName }}</span>
+                  <el-tag v-if="scope.row.isPrimaryKey" type="danger" size="small" style="margin-left: 8px;">主键</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="inferredType" label="推断类型" width="200" />
+              <el-table-column prop="sample" label="示例数据" />
+            </el-table>
+            
+            <div style="margin-bottom: 15px;">
+              <el-checkbox v-model="noPrimaryKey" @change="handleNoPrimaryKeyChange">
+                不设置主键（使用全行比较进行重复检测）
+              </el-checkbox>
+            </div>
+          </div>
+
+          <!-- 列映射（仅现有表模式） -->
+          <div v-if="showColumnMapping && importMethod === 'existing'" style="margin-bottom: 20px;">
             <h4>列映射配置</h4>
             <el-table :data="columnMapping" style="width: 100%">
               <el-table-column prop="csvColumn" label="CSV列" width="200" />
@@ -195,9 +264,9 @@
             <el-button 
               type="primary" 
               @click="validateAndProceed"
-              :disabled="!columnMapping.length || !columnMapping.some(mapping => mapping.dbColumn)"
+              :disabled="importMethod === 'existing' && (!columnMapping.length || !columnMapping.some(mapping => mapping.dbColumn))"
             >
-              验证并继续
+              {{ importMethod === 'auto-create' ? '继续' : '验证并继续' }}
             </el-button>
           </div>
         </div>
@@ -207,10 +276,40 @@
           <div style="margin-bottom: 20px;">
             <el-alert
               title="导入设置"
-              :description="`即将导入 ${mappedData.length} 条记录到表 ${selectedTable}`"
+              :description="importMethod === 'auto-create' 
+                ? `即将创建表 ${autoTableName} 并导入 ${mappedData.length} 条记录` 
+                : `即将导入 ${mappedData.length} 条记录到表 ${selectedTable}`"
               type="info"
               show-icon
             />
+            
+            <!-- 自动建表模式的特别提示 -->
+            <div v-if="importMethod === 'auto-create'" style="margin-top: 10px;">
+              <el-alert
+                v-if="selectedPrimaryKey"
+                :title="`已选择主键：${selectedPrimaryKey}`"
+                description="追加模式将基于此主键进行重复检测"
+                type="success"
+                show-icon
+                :closable="false"
+              />
+              <el-alert
+                v-else-if="noPrimaryKey"
+                title="未设置主键"
+                description="追加模式将使用全行比较进行重复检测"
+                type="warning"
+                show-icon
+                :closable="false"
+              />
+              <el-alert
+                v-else
+                title="请选择主键"
+                description="建议为表选择一个主键，以便更高效地进行重复检测"
+                type="info"
+                show-icon
+                :closable="false"
+              />
+            </div>
           </div>
 
           <el-form label-width="120px">
@@ -265,7 +364,8 @@
                 <p>失败记录: {{ importResult.result.failureCount }}</p>
                 <p v-if="importResult.result.skippedCount !== undefined">跳过重复: {{ importResult.result.skippedCount }}</p>
                 <p v-if="importResult.result.deletedRows !== undefined">删除记录: {{ importResult.result.deletedRows }}</p>
-                <p>导入策略: {{ importResult.result.importStrategy === 'overwrite' ? '覆盖模式' : '追加模式' }}</p>
+                <p v-if="importResult.result.importStrategy">导入策略: {{ importResult.result.importStrategy === 'overwrite' ? '覆盖模式' : '追加模式' }}</p>
+                <p v-if="importResult.result.tableCreated !== undefined">{{ importResult.result.tableCreated ? '已创建新表' : '使用现有表' }}</p>
                 <p>耗时: {{ importResult.result.duration }}ms</p>
                 <p v-if="importResult.result.message">{{ importResult.result.message }}</p>
               </div>
@@ -340,7 +440,12 @@ export default {
     const validationResult = ref(null);
     const mappedData = ref([]);
     const importMode = ref('normal');
+    const autoTableName = ref('');
+    const csvColumnsWithTypes = ref([]);
+    const selectedPrimaryKey = ref('');
+    const noPrimaryKey = ref(false);
     const importStrategy = ref('append');
+    const importMethod = ref('existing'); // 'existing' 或 'auto-create'
     const batchSize = ref(5000);
     const importing = ref(false);
     const importProgress = ref(0);
@@ -434,9 +539,104 @@ export default {
       showColumnMapping.value = true;
     };
 
+    // 推断CSV列的数据类型
+    const inferColumnTypes = () => {
+      if (!csvColumns.value.length || !parsedData.value.length) return;
+      
+      csvColumnsWithTypes.value = csvColumns.value.map(column => {
+        const sampleValues = parsedData.value.slice(0, 100).map(row => row[column]).filter(val => val !== null && val !== '');
+        const inferredType = inferDataType(sampleValues);
+        const sample = sampleValues.slice(0, 3).join(', ') || '空值';
+        
+        return {
+          columnName: column,
+          inferredType: inferredType,
+          sample: sample,
+          isPrimaryKey: false // 默认不是主键，由用户选择
+        };
+      });
+    };
+
+    // 数据类型推断逻辑
+    const inferDataType = (values) => {
+      if (!values.length) return 'VARCHAR(255)';
+      
+      let hasNumber = false;
+      let hasDecimal = false;
+      let hasDate = false;
+      let maxLength = 0;
+      
+      for (const value of values) {
+        const str = String(value).trim();
+        maxLength = Math.max(maxLength, str.length);
+        
+        // 检查是否为数字
+        if (/^\d+$/.test(str)) {
+          hasNumber = true;
+        } else if (/^\d*\.\d+$/.test(str)) {
+          hasDecimal = true;
+        } else if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+          hasDate = true;
+        }
+      }
+      
+      if (hasDate) return 'DATETIME';
+      if (hasDecimal) return 'DECIMAL(10,2)';
+      if (hasNumber) {
+        const maxValue = Math.max(...values.map(v => parseInt(v) || 0));
+        if (maxValue < 2147483647) return 'INT';
+        return 'BIGINT';
+      }
+      
+      if (maxLength <= 255) return `VARCHAR(${Math.max(255, maxLength + 50)})`;
+      return 'TEXT';
+    };
+
+    // 更新主键选择
+    const updatePrimaryKeySelection = () => {
+      if (selectedPrimaryKey.value) {
+        noPrimaryKey.value = false;
+        // 更新csvColumnsWithTypes中的isPrimaryKey标记
+        csvColumnsWithTypes.value.forEach(col => {
+          col.isPrimaryKey = col.columnName === selectedPrimaryKey.value;
+        });
+      }
+    };
+
+    // 处理"不设置主键"选项
+    const handleNoPrimaryKeyChange = (value) => {
+      if (value) {
+        selectedPrimaryKey.value = '';
+        csvColumnsWithTypes.value.forEach(col => {
+          col.isPrimaryKey = false;
+        });
+      }
+    };
+
     // 处理文件选择
     const handleFileChange = (file) => {
       fileList.value = [file];
+      // 自动设置表名（去掉文件扩展名）
+      if (file && file.name) {
+        autoTableName.value = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '_');
+      }
+    };
+
+    // 处理导入方式变化
+    const onImportMethodChange = (method) => {
+      if (method === 'auto-create') {
+        // 切换到自动建表模式时，清空表相关数据
+        selectedTable.value = '';
+        tableColumns.value = [];
+        columnMapping.value = [];
+        showColumnMapping.value = false;
+        validationResult.value = null;
+      } else {
+        // 切换到现有表模式时，重新加载表列表
+        if (selectedDataSource.value) {
+          loadTables();
+        }
+      }
     };
 
     // 解析CSV文件
@@ -473,11 +673,18 @@ export default {
           }
           
           ElMessage.success(`成功解析 ${parsedData.value.length} 条记录`);
-          currentStep.value = 1;
           
-          if (tableColumns.value.length > 0) {
+          if (importMethod.value === 'existing' && tableColumns.value.length > 0) {
             setupColumnMapping();
+          } else if (importMethod.value === 'auto-create') {
+            // 自动建表模式，推断字段类型
+            inferColumnTypes();
+            // 重置主键选择
+            selectedPrimaryKey.value = '';
+            noPrimaryKey.value = false;
           }
+          
+          currentStep.value = 1;
         },
         error: (error) => {
           ElMessage.error('文件解析失败: ' + error.message);
@@ -487,7 +694,14 @@ export default {
 
     // 验证数据并继续
     const validateAndProceed = async () => {
-      // 映射数据
+      if (importMethod.value === 'auto-create') {
+        // 自动建表模式，直接使用原始数据
+        mappedData.value = parsedData.value;
+        currentStep.value = 2;
+        return;
+      }
+      
+      // 现有表模式，进行数据映射和验证
       mappedData.value = parsedData.value.map(row => {
         const mappedRow = {};
         columnMapping.value.forEach(mapping => {
@@ -534,8 +748,13 @@ export default {
           ? '（覆盖模式：将清空表中所有数据后重新导入）' 
           : '（追加模式：检测重复数据，只导入不同的数据）';
         
+        const tableName = importMethod.value === 'auto-create' ? autoTableName.value : selectedTable.value;
+        const actionText = importMethod.value === 'auto-create' 
+          ? `创建表 ${tableName} 并导入 ${mappedData.value.length} 条记录` 
+          : `导入 ${mappedData.value.length} 条记录到表 ${tableName}`;
+        
         await ElMessageBox.confirm(
-          `确定要导入 ${mappedData.value.length} 条记录到表 ${selectedTable.value} 吗？${strategyText}`,
+          `确定要${actionText}吗？${importMethod.value === 'existing' ? strategyText : ''}`,
           '确认导入',
           {
             confirmButtonText: '确定',
@@ -547,38 +766,59 @@ export default {
         importing.value = true;
         importProgress.value = 0;
         importStatus.value = '';
-        importStatusText.value = '正在导入数据...';
+        importStatusText.value = importMethod.value === 'auto-create' ? '正在创建表并导入数据...' : '正在导入数据...';
 
-        const response = await databaseApi.batchInsertTableData(
-          selectedTable.value,
-          {
+        let response;
+        if (importMethod.value === 'auto-create') {
+          // 自动建表导入
+          response = await databaseApi.autoCreateTableAndImport({
             dataSource: selectedDataSource.value,
-            dataList: mappedData.value,
+            tableName: autoTableName.value,
+            csvData: mappedData.value,
+            csvColumns: csvColumnsWithTypes.value,
             useTransaction: importMode.value === 'transaction',
             importStrategy: importStrategy.value,
             userId: props.userId,
             userType: props.userType
-          }
-        );
+          });
+        } else {
+          // 现有表导入
+          response = await databaseApi.batchInsertTableData(
+            selectedTable.value,
+            {
+              dataSource: selectedDataSource.value,
+              dataList: mappedData.value,
+              useTransaction: importMode.value === 'transaction',
+              importStrategy: importStrategy.value,
+              userId: props.userId,
+              userType: props.userType
+            }
+          );
+        }
 
         importResult.value = response.data;
         importProgress.value = 100;
         importStatus.value = importResult.value.success ? 'success' : 'exception';
         importStatusText.value = importResult.value.success ? '导入完成' : '导入失败';
 
-        if (importResult.value.success) {
-          ElMessage.success('数据导入成功');
-          // 触发import-complete事件，通知父组件
-          emit('import-complete', {
-            ...importResult.value.result,
-            dataSource: selectedDataSource.value,
-            tableName: selectedTable.value
-          });
+                  if (importResult.value.success) {
+            const successMessage = importMethod.value === 'auto-create' 
+              ? (importResult.value.result.tableCreated ? '创建表并导入数据成功' : '导入数据成功')
+              : '数据导入成功';
+            ElMessage.success(successMessage);
+            
+            // 触发import-complete事件，通知父组件
+            const tableName = importMethod.value === 'auto-create' ? autoTableName.value : selectedTable.value;
+            emit('import-complete', {
+              ...importResult.value.result,
+              dataSource: selectedDataSource.value,
+              tableName: tableName
+            });
         } else {
           ElMessage.error('数据导入失败');
           
-          // 如果导入失败，自动进行诊断
-          if (importResult.value.result) {
+          // 如果导入失败，自动进行诊断（仅对现有表）
+          if (importResult.value.result && importMethod.value === 'existing') {
             await performDiagnosis();
           }
         }
@@ -592,8 +832,10 @@ export default {
           importStatus.value = 'exception';
           importStatusText.value = '导入失败';
           
-          // 导入异常时也进行诊断
-          await performDiagnosis();
+          // 导入异常时也进行诊断（仅对现有表）
+          if (importMethod.value === 'existing') {
+            await performDiagnosis();
+          }
         }
       } finally {
         importing.value = false;
@@ -641,6 +883,11 @@ export default {
       validationResult.value = null;
       mappedData.value = [];
       importStrategy.value = 'append';
+      importMethod.value = 'existing';
+      autoTableName.value = '';
+      csvColumnsWithTypes.value = [];
+      selectedPrimaryKey.value = '';
+      noPrimaryKey.value = false;
       importing.value = false;
       importProgress.value = 0;
       importResult.value = null;
@@ -684,6 +931,11 @@ export default {
       mappedData,
       importMode,
       importStrategy,
+      importMethod,
+      autoTableName,
+      csvColumnsWithTypes,
+      selectedPrimaryKey,
+      noPrimaryKey,
       batchSize,
       importing,
       importProgress,
@@ -698,10 +950,14 @@ export default {
       loadTables,
       loadTableColumns,
       handleFileChange,
+      onImportMethodChange,
       parseFile,
       validateAndProceed,
       startImport,
-      resetImporter
+      resetImporter,
+      inferColumnTypes,
+      updatePrimaryKeySelection,
+      handleNoPrimaryKeyChange
     };
   }
 };
