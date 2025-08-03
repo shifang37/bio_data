@@ -2682,6 +2682,436 @@ public class DatabaseService {
             throw new RuntimeException("事务性批量插入失败: " + e.getMessage(), e);
         }
     }
+    
+    /**
+     * 带策略的批量插入表数据（支持追加和覆盖模式）
+     */
+    public Map<String, Object> batchInsertTableDataWithStrategy(String dataSourceName, String tableName, List<Map<String, Object>> dataList, String importStrategy) {
+        logger.info("开始带策略的批量插入 - 数据源: {}, 表名: {}, 记录数: {}, 策略: {}", dataSourceName, tableName, dataList.size(), importStrategy);
+        
+        if ("overwrite".equals(importStrategy)) {
+            return batchInsertTableDataWithOverwrite(dataSourceName, tableName, dataList);
+        } else {
+            // 默认为追加模式
+            return batchInsertTableDataWithAppend(dataSourceName, tableName, dataList);
+        }
+    }
+    
+    /**
+     * 带策略的事务性批量插入表数据（支持追加和覆盖模式）
+     */
+    @Transactional
+    public Map<String, Object> batchInsertTableDataTransactionWithStrategy(String dataSourceName, String tableName, List<Map<String, Object>> dataList, String importStrategy) {
+        logger.info("开始带策略的事务性批量插入 - 数据源: {}, 表名: {}, 记录数: {}, 策略: {}", dataSourceName, tableName, dataList.size(), importStrategy);
+        
+        if ("overwrite".equals(importStrategy)) {
+            return batchInsertTableDataTransactionWithOverwrite(dataSourceName, tableName, dataList);
+        } else {
+            // 默认为追加模式
+            return batchInsertTableDataTransactionWithAppend(dataSourceName, tableName, dataList);
+        }
+    }
+    
+    /**
+     * 覆盖模式的批量插入（清空表后重新导入）
+     */
+    private Map<String, Object> batchInsertTableDataWithOverwrite(String dataSourceName, String tableName, List<Map<String, Object>> dataList) {
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            JdbcTemplate jdbcTemplate;
+            String deleteTemplate;
+            
+            // 检查是否为用户创建的数据库
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+                deleteTemplate = "DELETE FROM `%s`.`%s`";
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+                deleteTemplate = "DELETE FROM `%s`";
+            }
+            
+            // 清空表数据
+            String deleteSql;
+            if (isUserCreatedDatabase(dataSourceName)) {
+                deleteSql = String.format(deleteTemplate, dataSourceName, tableName);
+            } else {
+                deleteSql = String.format(deleteTemplate, tableName);
+            }
+            
+            logger.info("覆盖模式：清空表数据 - SQL: {}", deleteSql);
+            int deletedRows = jdbcTemplate.update(deleteSql);
+            logger.info("覆盖模式：已删除 {} 行数据", deletedRows);
+            
+            // 然后调用正常的批量插入
+            Map<String, Object> insertResult = batchInsertTableData(dataSourceName, tableName, dataList);
+            
+            // 更新结果信息
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
+            insertResult.put("duration", duration);
+            insertResult.put("deletedRows", deletedRows);
+            insertResult.put("importStrategy", "overwrite");
+            
+            logger.info("覆盖模式批量插入完成 - 删除行数: {}, 插入结果: {}", deletedRows, insertResult);
+            
+            return insertResult;
+            
+        } catch (Exception e) {
+            logger.error("覆盖模式批量插入失败: {}", e.getMessage(), e);
+            throw new RuntimeException("覆盖模式批量插入失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 事务性覆盖模式的批量插入
+     */
+    @Transactional
+    private Map<String, Object> batchInsertTableDataTransactionWithOverwrite(String dataSourceName, String tableName, List<Map<String, Object>> dataList) {
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            JdbcTemplate jdbcTemplate;
+            String deleteTemplate;
+            
+            // 检查是否为用户创建的数据库
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+                deleteTemplate = "DELETE FROM `%s`.`%s`";
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+                deleteTemplate = "DELETE FROM `%s`";
+            }
+            
+            // 清空表数据
+            String deleteSql;
+            if (isUserCreatedDatabase(dataSourceName)) {
+                deleteSql = String.format(deleteTemplate, dataSourceName, tableName);
+            } else {
+                deleteSql = String.format(deleteTemplate, tableName);
+            }
+            
+            logger.info("事务性覆盖模式：清空表数据 - SQL: {}", deleteSql);
+            int deletedRows = jdbcTemplate.update(deleteSql);
+            logger.info("事务性覆盖模式：已删除 {} 行数据", deletedRows);
+            
+            // 然后调用事务性批量插入
+            Map<String, Object> insertResult = batchInsertTableDataTransaction(dataSourceName, tableName, dataList);
+            
+            // 更新结果信息
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
+            insertResult.put("duration", duration);
+            insertResult.put("deletedRows", deletedRows);
+            insertResult.put("importStrategy", "overwrite");
+            
+            logger.info("事务性覆盖模式批量插入完成 - 删除行数: {}, 插入结果: {}", deletedRows, insertResult);
+            
+            return insertResult;
+            
+        } catch (Exception e) {
+            logger.error("事务性覆盖模式批量插入失败: {}", e.getMessage(), e);
+            throw new RuntimeException("事务性覆盖模式批量插入失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 追加模式的批量插入（检测重复数据，只导入不同的数据）
+     */
+    private Map<String, Object> batchInsertTableDataWithAppend(String dataSourceName, String tableName, List<Map<String, Object>> dataList) {
+        long startTime = System.currentTimeMillis();
+        int totalRecords = dataList.size();
+        int skippedCount = 0;
+        List<String> errors = new ArrayList<>();
+        
+        try {
+            logger.info("追加模式：开始检测重复数据 - 数据源: {}, 表名: {}, 记录数: {}", dataSourceName, tableName, totalRecords);
+            
+            // 获取表的主键列信息
+            List<String> primaryKeys = getTablePrimaryKeys(dataSourceName, tableName);
+            
+            List<Map<String, Object>> uniqueDataList = new ArrayList<>();
+            
+            if (primaryKeys.isEmpty()) {
+                // 没有主键，使用所有列进行重复检测
+                logger.info("追加模式：表没有主键，使用全行比较检测重复");
+                uniqueDataList = filterDuplicatesByAllColumns(dataSourceName, tableName, dataList);
+                skippedCount = totalRecords - uniqueDataList.size();
+            } else {
+                // 有主键，使用主键进行重复检测
+                logger.info("追加模式：使用主键进行重复检测 - 主键列: {}", primaryKeys);
+                uniqueDataList = filterDuplicatesByPrimaryKeys(dataSourceName, tableName, dataList, primaryKeys);
+                skippedCount = totalRecords - uniqueDataList.size();
+            }
+            
+            logger.info("追加模式：重复检测完成 - 原始记录: {}, 去重后: {}, 跳过: {}", totalRecords, uniqueDataList.size(), skippedCount);
+            
+            if (uniqueDataList.isEmpty()) {
+                // 所有数据都是重复的
+                Map<String, Object> result = new HashMap<>();
+                result.put("totalRecords", totalRecords);
+                result.put("successCount", 0);
+                result.put("failureCount", 0);
+                result.put("skippedCount", skippedCount);
+                result.put("duration", System.currentTimeMillis() - startTime);
+                result.put("errors", errors);
+                result.put("importStrategy", "append");
+                result.put("message", "所有数据都已存在，无需导入");
+                
+                logger.info("追加模式：所有数据都是重复的，跳过导入");
+                return result;
+            }
+            
+            // 调用正常的批量插入处理去重后的数据
+            Map<String, Object> insertResult = batchInsertTableData(dataSourceName, tableName, uniqueDataList);
+            
+            // 更新结果信息
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
+            insertResult.put("duration", duration);
+            insertResult.put("skippedCount", skippedCount);
+            insertResult.put("importStrategy", "append");
+            
+            logger.info("追加模式批量插入完成 - 跳过重复: {}, 插入结果: {}", skippedCount, insertResult);
+            
+            return insertResult;
+            
+        } catch (Exception e) {
+            logger.error("追加模式批量插入失败: {}", e.getMessage(), e);
+            throw new RuntimeException("追加模式批量插入失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 事务性追加模式的批量插入
+     */
+    @Transactional
+    private Map<String, Object> batchInsertTableDataTransactionWithAppend(String dataSourceName, String tableName, List<Map<String, Object>> dataList) {
+        long startTime = System.currentTimeMillis();
+        int totalRecords = dataList.size();
+        int skippedCount = 0;
+        
+        try {
+            logger.info("事务性追加模式：开始检测重复数据 - 数据源: {}, 表名: {}, 记录数: {}", dataSourceName, tableName, totalRecords);
+            
+            // 获取表的主键列信息
+            List<String> primaryKeys = getTablePrimaryKeys(dataSourceName, tableName);
+            
+            List<Map<String, Object>> uniqueDataList = new ArrayList<>();
+            
+            if (primaryKeys.isEmpty()) {
+                // 没有主键，使用所有列进行重复检测
+                logger.info("事务性追加模式：表没有主键，使用全行比较检测重复");
+                uniqueDataList = filterDuplicatesByAllColumns(dataSourceName, tableName, dataList);
+                skippedCount = totalRecords - uniqueDataList.size();
+            } else {
+                // 有主键，使用主键进行重复检测
+                logger.info("事务性追加模式：使用主键进行重复检测 - 主键列: {}", primaryKeys);
+                uniqueDataList = filterDuplicatesByPrimaryKeys(dataSourceName, tableName, dataList, primaryKeys);
+                skippedCount = totalRecords - uniqueDataList.size();
+            }
+            
+            logger.info("事务性追加模式：重复检测完成 - 原始记录: {}, 去重后: {}, 跳过: {}", totalRecords, uniqueDataList.size(), skippedCount);
+            
+            if (uniqueDataList.isEmpty()) {
+                // 所有数据都是重复的
+                Map<String, Object> result = new HashMap<>();
+                result.put("totalRecords", totalRecords);
+                result.put("successCount", 0);
+                result.put("failureCount", 0);
+                result.put("skippedCount", skippedCount);
+                result.put("duration", System.currentTimeMillis() - startTime);
+                result.put("errors", new ArrayList<>());
+                result.put("importStrategy", "append");
+                result.put("message", "所有数据都已存在，无需导入");
+                
+                logger.info("事务性追加模式：所有数据都是重复的，跳过导入");
+                return result;
+            }
+            
+            // 调用事务性批量插入处理去重后的数据
+            Map<String, Object> insertResult = batchInsertTableDataTransaction(dataSourceName, tableName, uniqueDataList);
+            
+            // 更新结果信息
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
+            insertResult.put("duration", duration);
+            insertResult.put("skippedCount", skippedCount);
+            insertResult.put("importStrategy", "append");
+            
+            logger.info("事务性追加模式批量插入完成 - 跳过重复: {}, 插入结果: {}", skippedCount, insertResult);
+            
+            return insertResult;
+            
+        } catch (Exception e) {
+            logger.error("事务性追加模式批量插入失败: {}", e.getMessage(), e);
+            throw new RuntimeException("事务性追加模式批量插入失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 获取表的主键列
+     */
+    private List<String> getTablePrimaryKeys(String dataSourceName, String tableName) {
+        try {
+            JdbcTemplate jdbcTemplate;
+            String sql;
+            
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+                sql = "SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE " +
+                      "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY' " +
+                      "ORDER BY ORDINAL_POSITION";
+                return jdbcTemplate.queryForList(sql, String.class, dataSourceName, tableName);
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+                sql = "SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE " +
+                      "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY' " +
+                      "ORDER BY ORDINAL_POSITION";
+                return jdbcTemplate.queryForList(sql, String.class, tableName);
+            }
+        } catch (Exception e) {
+            logger.warn("获取主键信息失败: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+    
+    /**
+     * 基于主键过滤重复数据
+     */
+    private List<Map<String, Object>> filterDuplicatesByPrimaryKeys(String dataSourceName, String tableName, 
+            List<Map<String, Object>> dataList, List<String> primaryKeys) {
+        
+        if (primaryKeys.isEmpty() || dataList.isEmpty()) {
+            return dataList;
+        }
+        
+        try {
+            JdbcTemplate jdbcTemplate;
+            String sql;
+            
+            // 构建查询条件
+            String whereClause = primaryKeys.stream()
+                    .map(pk -> "`" + pk + "` = ?")
+                    .collect(java.util.stream.Collectors.joining(" AND "));
+            
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+                sql = String.format("SELECT COUNT(*) FROM `%s`.`%s` WHERE %s", dataSourceName, tableName, whereClause);
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+                sql = String.format("SELECT COUNT(*) FROM `%s` WHERE %s", tableName, whereClause);
+            }
+            
+            List<Map<String, Object>> uniqueList = new ArrayList<>();
+            
+            for (Map<String, Object> record : dataList) {
+                // 准备主键值
+                Object[] primaryKeyValues = new Object[primaryKeys.size()];
+                boolean hasAllPrimaryKeys = true;
+                
+                for (int i = 0; i < primaryKeys.size(); i++) {
+                    Object value = record.get(primaryKeys.get(i));
+                    if (value == null) {
+                        hasAllPrimaryKeys = false;
+                        break;
+                    }
+                    primaryKeyValues[i] = value;
+                }
+                
+                if (!hasAllPrimaryKeys) {
+                    // 主键值不完整，跳过该记录
+                    logger.warn("记录的主键值不完整，跳过: {}", record);
+                    continue;
+                }
+                
+                // 检查是否已存在
+                try {
+                    Integer count = jdbcTemplate.queryForObject(sql, Integer.class, primaryKeyValues);
+                    if (count == null || count == 0) {
+                        uniqueList.add(record);
+                    }
+                } catch (Exception e) {
+                    logger.warn("检查重复数据时出错，将该记录添加到导入列表: {}", e.getMessage());
+                    uniqueList.add(record);
+                }
+            }
+            
+            return uniqueList;
+            
+        } catch (Exception e) {
+            logger.error("基于主键过滤重复数据失败: {}", e.getMessage());
+            return dataList; // 出错时返回原始数据
+        }
+    }
+    
+    /**
+     * 基于所有列过滤重复数据（当没有主键时）
+     */
+    private List<Map<String, Object>> filterDuplicatesByAllColumns(String dataSourceName, String tableName, 
+            List<Map<String, Object>> dataList) {
+        
+        if (dataList.isEmpty()) {
+            return dataList;
+        }
+        
+        try {
+            // 获取表的所有列
+            List<Map<String, Object>> columns = getTableColumns(dataSourceName, tableName);
+            List<String> columnNames = columns.stream()
+                    .map(col -> (String) col.get("COLUMN_NAME"))
+                    .collect(java.util.stream.Collectors.toList());
+            
+            if (columnNames.isEmpty()) {
+                return dataList;
+            }
+            
+            JdbcTemplate jdbcTemplate;
+            String sql;
+            
+            // 构建查询条件 - 使用 IS NULL 处理 null 值
+            String whereClause = columnNames.stream()
+                    .map(col -> String.format("((`%s` = ?) OR (`%s` IS NULL AND ? IS NULL))", col, col))
+                    .collect(java.util.stream.Collectors.joining(" AND "));
+            
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+                sql = String.format("SELECT COUNT(*) FROM `%s`.`%s` WHERE %s", dataSourceName, tableName, whereClause);
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+                sql = String.format("SELECT COUNT(*) FROM `%s` WHERE %s", tableName, whereClause);
+            }
+            
+            List<Map<String, Object>> uniqueList = new ArrayList<>();
+            
+            for (Map<String, Object> record : dataList) {
+                // 准备所有列的值（每个值需要重复两次用于 null 检查）
+                Object[] allColumnValues = new Object[columnNames.size() * 2];
+                for (int i = 0; i < columnNames.size(); i++) {
+                    Object value = record.get(columnNames.get(i));
+                    allColumnValues[i * 2] = value;
+                    allColumnValues[i * 2 + 1] = value;
+                }
+                
+                // 检查是否已存在
+                try {
+                    Integer count = jdbcTemplate.queryForObject(sql, Integer.class, allColumnValues);
+                    if (count == null || count == 0) {
+                        uniqueList.add(record);
+                    }
+                } catch (Exception e) {
+                    logger.warn("检查重复数据时出错，将该记录添加到导入列表: {}", e.getMessage());
+                    uniqueList.add(record);
+                }
+            }
+            
+            return uniqueList;
+            
+        } catch (Exception e) {
+            logger.error("基于所有列过滤重复数据失败: {}", e.getMessage());
+            return dataList; // 出错时返回原始数据
+        }
+    }
 
     /**
      * 验证CSV数据格式

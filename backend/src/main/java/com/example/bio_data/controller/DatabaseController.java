@@ -1359,6 +1359,7 @@ public class DatabaseController {
             Long userId = extractUserId(request);
             String userType = (String) request.get("userType");
             Boolean useTransaction = (Boolean) request.get("useTransaction");
+            String importStrategy = (String) request.get("importStrategy");
             
             // 权限验证
             if (userId == null) {
@@ -1382,21 +1383,20 @@ public class DatabaseController {
                 return ResponseEntity.badRequest().body(Map.of("error", "单次批量插入数据量不能超过10万条"));
             }
             
+            // 设置默认导入策略
+            if (importStrategy == null || importStrategy.trim().isEmpty()) {
+                importStrategy = "append"; // 默认为追加模式
+            }
+            
             Map<String, Object> result;
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "chembl33";
+            
             if (useTransaction != null && useTransaction) {
                 // 使用事务性批量插入
-                if (dataSource != null && !dataSource.trim().isEmpty()) {
-                    result = databaseService.batchInsertTableDataTransaction(dataSource, tableName, dataList);
-                } else {
-                    result = databaseService.batchInsertTableDataTransaction("chembl33", tableName, dataList);
-                }
+                result = databaseService.batchInsertTableDataTransactionWithStrategy(actualDataSource, tableName, dataList, importStrategy);
             } else {
                 // 使用非事务性批量插入
-                if (dataSource != null && !dataSource.trim().isEmpty()) {
-                    result = databaseService.batchInsertTableData(dataSource, tableName, dataList);
-                } else {
-                    result = databaseService.batchInsertTableData("chembl33", tableName, dataList);
-                }
+                result = databaseService.batchInsertTableDataWithStrategy(actualDataSource, tableName, dataList, importStrategy);
             }
             
             return ResponseEntity.ok(Map.of(

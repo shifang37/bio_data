@@ -214,6 +214,16 @@
           </div>
 
           <el-form label-width="120px">
+            <el-form-item label="导入策略">
+              <el-radio-group v-model="importStrategy">
+                <el-radio label="append">追加模式（检测重复数据，只导入不同的数据）</el-radio>
+                <el-radio label="overwrite">覆盖模式（清空表后重新导入所有数据）</el-radio>
+              </el-radio-group>
+              <div style="color: #999; font-size: 12px; margin-top: 5px;">
+                追加模式会检查数据重复性，覆盖模式会删除表中所有数据后重新导入
+              </div>
+            </el-form-item>
+
             <el-form-item label="导入模式">
               <el-radio-group v-model="importMode">
                 <el-radio label="normal">普通模式（快速，但可能部分失败）</el-radio>
@@ -253,7 +263,11 @@
                 <p>总记录数: {{ importResult.result.totalRecords }}</p>
                 <p>成功导入: {{ importResult.result.successCount }}</p>
                 <p>失败记录: {{ importResult.result.failureCount }}</p>
+                <p v-if="importResult.result.skippedCount !== undefined">跳过重复: {{ importResult.result.skippedCount }}</p>
+                <p v-if="importResult.result.deletedRows !== undefined">删除记录: {{ importResult.result.deletedRows }}</p>
+                <p>导入策略: {{ importResult.result.importStrategy === 'overwrite' ? '覆盖模式' : '追加模式' }}</p>
                 <p>耗时: {{ importResult.result.duration }}ms</p>
+                <p v-if="importResult.result.message">{{ importResult.result.message }}</p>
               </div>
               <div v-else>
                 {{ importResult.error }}
@@ -326,6 +340,7 @@ export default {
     const validationResult = ref(null);
     const mappedData = ref([]);
     const importMode = ref('normal');
+    const importStrategy = ref('append');
     const batchSize = ref(5000);
     const importing = ref(false);
     const importProgress = ref(0);
@@ -515,8 +530,12 @@ export default {
       }
 
       try {
+        const strategyText = importStrategy.value === 'overwrite' 
+          ? '（覆盖模式：将清空表中所有数据后重新导入）' 
+          : '（追加模式：检测重复数据，只导入不同的数据）';
+        
         await ElMessageBox.confirm(
-          `确定要导入 ${mappedData.value.length} 条记录到表 ${selectedTable.value} 吗？`,
+          `确定要导入 ${mappedData.value.length} 条记录到表 ${selectedTable.value} 吗？${strategyText}`,
           '确认导入',
           {
             confirmButtonText: '确定',
@@ -536,6 +555,7 @@ export default {
             dataSource: selectedDataSource.value,
             dataList: mappedData.value,
             useTransaction: importMode.value === 'transaction',
+            importStrategy: importStrategy.value,
             userId: props.userId,
             userType: props.userType
           }
@@ -620,6 +640,7 @@ export default {
       showColumnMapping.value = false;
       validationResult.value = null;
       mappedData.value = [];
+      importStrategy.value = 'append';
       importing.value = false;
       importProgress.value = 0;
       importResult.value = null;
@@ -662,6 +683,7 @@ export default {
       validationResult,
       mappedData,
       importMode,
+      importStrategy,
       batchSize,
       importing,
       importProgress,
