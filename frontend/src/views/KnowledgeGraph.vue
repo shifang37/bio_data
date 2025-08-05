@@ -16,18 +16,17 @@
             >
               上传文件
             </el-button>
-            <el-dropdown @command="handleExport" trigger="click">
-              <el-button :icon="Download">
-                导出<el-icon class="el-icon--right"><arrow-down /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="json">导出为JSON</el-dropdown-item>
-                  <el-dropdown-item command="csv">导出为CSV</el-dropdown-item>
-                  <el-dropdown-item command="graphml">导出为GraphML</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+                         <el-dropdown @command="handleExport" trigger="click">
+               <el-button :icon="Download">
+                 导出图片<el-icon class="el-icon--right"><arrow-down /></el-icon>
+               </el-button>
+               <template #dropdown>
+                 <el-dropdown-menu>
+                   <el-dropdown-item command="png">导出为PNG</el-dropdown-item>
+                   <el-dropdown-item command="jpg">导出为JPG</el-dropdown-item>
+                 </el-dropdown-menu>
+               </template>
+             </el-dropdown>
           </el-button-group>
         </div>
       </div>
@@ -359,138 +358,131 @@ export default {
       }
     }
 
-    const showExampleData = () => {
-      ElMessageBox.confirm(
-        '这将加载示例知识图谱数据，当前数据将被替换。是否继续？',
-        '加载示例数据',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      ).then(() => {
-        loadExampleData()
-      }).catch(() => {
-        // 用户取消
-      })
-    }
+    
 
-    const loadExampleData = () => {
-      // 使用您提供的示例数据
-      const exampleData = {
-        nodes: [
-          {
-            id: "P001",
-            name: "Protein_1",
-            label: "Protein",
-            type: "Protein",
-            properties: {
-              function: "磷酸酶，参与信号去磷酸化",
-              location: "细胞质",
-              molecular_weight: "66 kDa",
-              expression_tissue: "脑"
-            }
-          },
-          {
-            id: "G001",
-            name: "Gene_1",
-            label: "Gene",
-            type: "Gene",
-            properties: {
-              chromosome: "5p",
-              exon_count: 20,
-              expression_pattern: "组成型",
-              associated_disease: "肺癌"
-            }
-          },
-          {
-            id: "M001",
-            name: "cg54448361",
-            label: "Methylation",
-            type: "Methylation",
-            properties: {
-              chromosome: "18p",
-              genomic_region: "启动子",
-              methylation_effect: "高甲基化抑制基因表达",
-              detection_platform: "WGBS"
-            }
-          }
-        ],
-        links: [
-          {
-            source: "G001",
-            target: "P001",
-            type: "encodes",
-            relation: "encodes",
-            properties: {
-              confidence: 0.97,
-              evidence: "NCBI Gene/Ensembl",
-              transcript_id: "NM_123108.1"
-            }
-          },
-          {
-            source: "M001",
-            target: "G001",
-            type: "upregulates",
-            relation: "upregulates",
-            properties: {
-              confidence: 0.94,
-              evidence: "RRBS",
-              correlation_coefficient: 0.68
-            }
-          }
-        ]
-      }
+         const handleExport = async (format) => {
+       if (!hasData.value) {
+         ElMessage.warning('没有可导出的数据')
+         return
+       }
 
-      graphData.value = exampleData
-      currentFile.value = {
-        name: 'example-data.json',
-        type: 'json',
-        size: JSON.stringify(exampleData).length
-      }
+       try {
+         // 获取SVG元素
+         const svgElement = document.querySelector('#knowledge-graph-svg')
+         if (!svgElement) {
+           ElMessage.error('未找到图谱元素，请确保图谱已加载')
+           return
+         }
 
-      calculateStatistics()
-      ElMessage.success('示例数据已加载')
-    }
+         // 获取图谱容器的实际尺寸
+         const graphContainer = document.querySelector('.graph-container')
+         if (!graphContainer) {
+           ElMessage.error('未找到图谱容器')
+           return
+         }
 
-    const handleExport = async (format) => {
-      if (!hasData.value) {
-        ElMessage.warning('没有可导出的数据')
-        return
-      }
+         const containerWidth = graphContainer.clientWidth
+         const containerHeight = graphContainer.clientHeight
 
-      try {
-        const response = await api.post('/api/knowledge-graph/export', {
-          graphData: graphData.value,
-          exportFormat: format,
-          userId: userState.userId,
-          userType: userState.userType
-        })
+         // 创建Canvas，使用容器的实际尺寸
+         const canvas = document.createElement('canvas')
+         const ctx = canvas.getContext('2d')
+         canvas.width = containerWidth
+         canvas.height = containerHeight
 
-        if (response.data.success) {
-          const { content, mimeType, extension } = response.data.data
-          downloadFile(content, `knowledge-graph${extension}`, mimeType)
-          ElMessage.success(`数据已导出为${format.toUpperCase()}格式`)
-        } else {
-          throw new Error(response.data.error || '导出失败')
-        }
-      } catch (error) {
-        console.error('导出失败:', error)
-        ElMessage.error('导出失败: ' + error.message)
-      }
-    }
+         // 设置白色背景
+         ctx.fillStyle = '#ffffff'
+         ctx.fillRect(0, 0, containerWidth, containerHeight)
 
-    const downloadFile = (content, filename, mimeType) => {
-      const blob = new Blob([content], { type: mimeType })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-    }
+         // 获取SVG的完整内容，包括所有节点和边
+         const svgClone = svgElement.cloneNode(true)
+         
+         // 移除缩放变换，确保看到完整的图谱
+         const transformGroup = svgClone.querySelector('g')
+         if (transformGroup) {
+           transformGroup.removeAttribute('transform')
+         }
+         
+         // 计算图谱的实际边界
+         const allElements = svgClone.querySelectorAll('*')
+         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+         
+         // 遍历所有元素找到边界
+         allElements.forEach(element => {
+           const bbox = element.getBBox ? element.getBBox() : null
+           if (bbox && bbox.width > 0 && bbox.height > 0) {
+             minX = Math.min(minX, bbox.x)
+             minY = Math.min(minY, bbox.y)
+             maxX = Math.max(maxX, bbox.x + bbox.width)
+             maxY = Math.max(maxY, bbox.y + bbox.height)
+           }
+         })
+         
+         // 如果没有找到有效边界，使用容器尺寸
+         if (minX === Infinity) {
+           minX = 0
+           minY = 0
+           maxX = containerWidth
+           maxY = containerHeight
+         }
+         
+         // 添加边距
+         const padding = 50
+         minX -= padding
+         minY -= padding
+         maxX += padding
+         maxY += padding
+         
+         const viewBoxWidth = maxX - minX
+         const viewBoxHeight = maxY - minY
+         
+         // 确保SVG有正确的尺寸和viewBox
+         svgClone.setAttribute('width', containerWidth)
+         svgClone.setAttribute('height', containerHeight)
+         svgClone.setAttribute('viewBox', `${minX} ${minY} ${viewBoxWidth} ${viewBoxHeight}`)
+         
+         // 将SVG转换为图片
+         const svgData = new XMLSerializer().serializeToString(svgClone)
+         const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+         const svgUrl = URL.createObjectURL(svgBlob)
+
+         const img = new Image()
+         img.onload = () => {
+           // 绘制图片到Canvas，保持原始尺寸
+           ctx.drawImage(img, 0, 0, containerWidth, containerHeight)
+           
+           // 导出图片
+           const mimeType = format === 'png' ? 'image/png' : 'image/jpeg'
+           const quality = format === 'jpg' ? 0.9 : undefined
+           
+           canvas.toBlob((blob) => {
+             const url = URL.createObjectURL(blob)
+             const link = document.createElement('a')
+             link.href = url
+             link.download = `knowledge-graph.${format}`
+             document.body.appendChild(link)
+             link.click()
+             document.body.removeChild(link)
+             URL.revokeObjectURL(url)
+             URL.revokeObjectURL(svgUrl)
+             
+             ElMessage.success(`图谱已导出为${format.toUpperCase()}格式`)
+           }, mimeType, quality)
+         }
+         
+         img.onerror = () => {
+           ElMessage.error('图片生成失败')
+           URL.revokeObjectURL(svgUrl)
+         }
+         
+         img.src = svgUrl
+       } catch (error) {
+         console.error('导出失败:', error)
+         ElMessage.error('导出失败: ' + error.message)
+       }
+     }
+
+
 
     const reloadData = () => {
       if (currentFile.value) {

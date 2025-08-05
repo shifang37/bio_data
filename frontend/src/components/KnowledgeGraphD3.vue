@@ -99,25 +99,46 @@
           </template>
           
           <div class="node-details-content">
-            <div class="detail-item">
-              <span class="detail-label">名称：</span>
-              <span class="detail-value">{{ selectedNode.name || selectedNode.id }}</span>
+            <!-- 基本信息 -->
+            <div class="detail-section">
+              <h4 class="section-title">基本信息</h4>
+              <div class="detail-item">
+                <span class="detail-label">名称：</span>
+                <span class="detail-value">{{ selectedNode.name || selectedNode.id }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">类型：</span>
+                <span class="detail-value">{{ selectedNode.type || selectedNode.label || '未知' }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">连接数：</span>
+                <span class="detail-value">{{ selectedNode.degree || 0 }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">中心性：</span>
+                <span class="detail-value">{{ selectedNode.betweenness || 0 }}%</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">重要度：</span>
+                <span class="detail-value">{{ selectedNode.importance || '低' }}</span>
+              </div>
             </div>
-            <div class="detail-item">
-              <span class="detail-label">类型：</span>
-              <span class="detail-value">{{ selectedNode.type || selectedNode.label || '未知' }}</span>
+
+            <!-- 节点属性信息 -->
+            <div v-if="selectedNode.properties && Object.keys(selectedNode.properties).length > 0" class="detail-section">
+              <h4 class="section-title">属性信息</h4>
+              <div v-for="(value, key) in selectedNode.properties" :key="key" class="detail-item">
+                <span class="detail-label">{{ formatPropertyLabel(key) }}：</span>
+                <span class="detail-value">{{ value }}</span>
+              </div>
             </div>
-            <div class="detail-item">
-              <span class="detail-label">连接数：</span>
-              <span class="detail-value">{{ selectedNode.degree || 0 }}</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">中心性：</span>
-              <span class="detail-value">{{ selectedNode.betweenness || 0 }}%</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">重要度：</span>
-              <span class="detail-value">{{ selectedNode.importance || '低' }}</span>
+
+            <!-- 无属性信息时的提示 -->
+            <div v-else-if="selectedNode.properties && Object.keys(selectedNode.properties).length === 0" class="detail-section">
+              <h4 class="section-title">属性信息</h4>
+              <div class="no-properties">
+                <el-empty description="暂无属性信息" :image-size="60" />
+              </div>
             </div>
           </div>
         </el-card>
@@ -146,6 +167,7 @@
 <script>
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import * as d3 from 'd3'
+import { ElEmpty } from 'element-plus'
 import { 
   ZoomIn, 
   ZoomOut, 
@@ -161,7 +183,8 @@ export default {
     ZoomOut, 
     Refresh,
     FullScreen,
-    Close
+    Close,
+    ElEmpty
   },
   props: {
     graphData: {
@@ -231,14 +254,54 @@ export default {
       return ((actualEdges / maxPossibleEdges) * 100).toFixed(2)
     }
 
-    // 计算平均度数
-    const calculateAverageDegree = () => {
-      if (!props.graphData.nodes || !props.graphData.links) return 0
-      const nodeCount = props.graphData.nodes.length
-      if (nodeCount === 0) return 0
-      const totalEdges = props.graphData.links.length * 2
-      return (totalEdges / nodeCount).toFixed(1)
-    }
+         // 计算平均度数
+     const calculateAverageDegree = () => {
+       if (!props.graphData.nodes || !props.graphData.links) return 0
+       const nodeCount = props.graphData.nodes.length
+       if (nodeCount === 0) return 0
+       const totalEdges = props.graphData.links.length * 2
+       return (totalEdges / nodeCount).toFixed(1)
+     }
+
+     // 格式化属性标签
+     const formatPropertyLabel = (key) => {
+       const labelMap = {
+         // Protein 相关属性
+         'function': '功能',
+         'location': '位置',
+         'molecular_weight': '分子量',
+         'expression_tissue': '表达组织',
+         
+         // Gene 相关属性
+         'chromosome': '染色体',
+         'exon_count': '外显子数量',
+         'expression_pattern': '表达模式',
+         'associated_disease': '相关疾病',
+         
+         // Methylation 相关属性
+         'genomic_region': '基因组区域',
+         'methylation_effect': '甲基化效应',
+         'detection_platform': '检测平台',
+         
+         // Metabolite 相关属性
+         'hmdb_id': 'HMDB ID',
+         'formula': '分子式',
+         'pathway': '代谢通路',
+         'cellular_role': '细胞功能',
+         
+         // Disease 相关属性
+         'disease_type': '疾病类型',
+         'severity': '严重程度',
+         'prevalence': '患病率',
+         
+         // Drug 相关属性
+         'drug_type': '药物类型',
+         'mechanism': '作用机制',
+         'target': '作用靶点'
+       }
+       
+       return labelMap[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+     }
 
     // 获取节点颜色
     const getNodeColor = (node) => {
@@ -342,6 +405,7 @@ export default {
       // 创建SVG
       svg = container
         .append("svg")
+        .attr("id", "knowledge-graph-svg")
         .attr("width", width)
         .attr("height", height)
         .style("background", "#f5f7fa")
@@ -690,14 +754,15 @@ export default {
       graphHeight,
       nodeTypeStats,
 
-      // methods
-      zoomIn,
-      zoomOut,
-      resetZoom,
-      toggleFullscreen,
-      calculateNetworkDensity,
-      calculateAverageDegree,
-      renderGraph
+             // methods
+       zoomIn,
+       zoomOut,
+       resetZoom,
+       toggleFullscreen,
+       calculateNetworkDensity,
+       calculateAverageDegree,
+       formatPropertyLabel,
+       renderGraph
     }
   }
 }
@@ -828,11 +893,36 @@ export default {
   background: rgba(245, 108, 108, 0.1) !important;
 }
 
-.node-details-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+ .node-details-content {
+   display: flex;
+   flex-direction: column;
+   gap: 16px;
+ }
+
+ .detail-section {
+   border-bottom: 1px solid #f0f0f0;
+   padding-bottom: 12px;
+ }
+
+ .detail-section:last-child {
+   border-bottom: none;
+   padding-bottom: 0;
+ }
+
+ .section-title {
+   margin: 0 0 8px 0;
+   color: #303133;
+   font-size: 14px;
+   font-weight: 600;
+   padding-bottom: 4px;
+   border-bottom: 1px solid #e4e7ed;
+ }
+
+ .no-properties {
+   text-align: center;
+   padding: 20px 0;
+   color: #909399;
+ }
 
 .detail-item {
   display: flex;
