@@ -212,9 +212,10 @@ export default {
     let zoom = null
     let nodes = []
     let links = []
-    let nodeElements = null
-    let linkElements = null
-    let textElements = null
+         let nodeElements = null
+     let linkElements = null
+     let textElements = null
+     let linkTextElements = null
 
     // 颜色配置
     const nodeColors = {
@@ -384,13 +385,37 @@ export default {
       return betweenness
     }
 
-    // 基于度数计算节点大小
-    const calculateNodeSize = (degree, maxDegree) => {
-      const minSize = 4
-      const maxSize = 12
-      if (maxDegree === 0) return minSize
-      return minSize + (degree / maxDegree) * (maxSize - minSize)
-    }
+         // 基于度数计算节点大小
+     const calculateNodeSize = (degree, maxDegree) => {
+       const minSize = 4
+       const maxSize = 12
+       if (maxDegree === 0) return minSize
+       return minSize + (degree / maxDegree) * (maxSize - minSize)
+     }
+
+     // 获取边的标签文本
+     const getLinkLabel = (link) => {
+       // 优先使用 type 字段（JSON文件）
+       if (link.type) {
+         return link.type
+       }
+       // 其次使用 relation 字段（CSV文件）
+       if (link.relation) {
+         return link.relation
+       }
+       // 最后使用其他可能的字段
+       if (link.label) {
+         return link.label
+       }
+       return null
+     }
+
+     // 检查边是否与指定节点相关
+     const isLinkRelatedToNode = (link, node) => {
+       const sourceId = link.source.id || link.source
+       const targetId = link.target.id || link.target
+       return sourceId === node.id || targetId === node.id
+     }
 
     // 初始化D3图谱
     const initGraph = () => {
@@ -420,7 +445,8 @@ export default {
           g.attr("transform", event.transform)
         })
 
-      svg.call(zoom)
+             svg.call(zoom)
+         .on("click", handleBackgroundClick) // 添加背景点击事件
 
       // 初始化力导向模拟
       simulation = d3.forceSimulation()
@@ -441,6 +467,7 @@ export default {
       try {
         // 清除现有元素
         g.selectAll(".link").remove()
+        g.selectAll(".link-text").remove()
         g.selectAll(".node").remove()
         g.selectAll(".node-text").remove()
 
@@ -453,6 +480,7 @@ export default {
         linkElements = null
         nodeElements = null
         textElements = null
+        linkTextElements = null
 
         // 检查是否有数据
         if (!props.graphData.nodes || props.graphData.nodes.length === 0) {
@@ -502,6 +530,20 @@ export default {
           .style("stroke", "#999")
           .style("stroke-opacity", 0.6)
           .style("stroke-width", 1)
+
+                 // 创建边的文本标签（初始时隐藏所有标签）
+         linkTextElements = g.selectAll(".link-text")
+           .data(links.filter(link => getLinkLabel(link))) // 只对有标签的边创建文本
+           .enter()
+           .append("text")
+           .attr("class", "link-text")
+           .style("font-size", "10px")
+           .style("fill", "#666")
+           .style("pointer-events", "none")
+           .style("text-anchor", "middle")
+           .style("dominant-baseline", "middle")
+           .style("opacity", 0) // 初始时隐藏所有标签
+           .text(d => getLinkLabel(d))
 
         // 创建节点组
         const nodeGroups = g.selectAll(".node")
@@ -554,28 +596,35 @@ export default {
       }
     }
 
-    // 力导向模拟tick事件
-    const ticked = () => {
-      if (linkElements && linkElements.size() > 0) {
-        linkElements
-          .attr("x1", d => d.source.x)
-          .attr("y1", d => d.source.y)
-          .attr("x2", d => d.target.x)
-          .attr("y2", d => d.target.y)
-      }
+         // 力导向模拟tick事件
+     const ticked = () => {
+       if (linkElements && linkElements.size() > 0) {
+         linkElements
+           .attr("x1", d => d.source.x)
+           .attr("y1", d => d.source.y)
+           .attr("x2", d => d.target.x)
+           .attr("y2", d => d.target.y)
+       }
 
-      if (nodeElements && nodeElements.size() > 0) {
-        nodeElements
-          .attr("cx", d => d.x)
-          .attr("cy", d => d.y)
-      }
+       if (nodeElements && nodeElements.size() > 0) {
+         nodeElements
+           .attr("cx", d => d.x)
+           .attr("cy", d => d.y)
+       }
 
-      if (textElements && textElements.size() > 0) {
-        textElements
-          .attr("x", d => d.x)
-          .attr("y", d => d.y)
-      }
-    }
+       if (textElements && textElements.size() > 0) {
+         textElements
+           .attr("x", d => d.x)
+           .attr("y", d => d.y)
+       }
+
+       // 更新边的文本标签位置
+       if (linkTextElements && linkTextElements.size() > 0) {
+         linkTextElements
+           .attr("x", d => (d.source.x + d.target.x) / 2)
+           .attr("y", d => (d.source.y + d.target.y) / 2)
+       }
+     }
 
     // 拖拽事件处理
     const dragstarted = (event, d) => {
@@ -595,43 +644,183 @@ export default {
       d.fy = null
     }
 
-    // 节点交互事件
-    const handleNodeClick = (event, d) => {
-      selectedNode.value = d
-      emit('node-click', d)
-    }
+         // 节点交互事件
+     const handleNodeClick = (event, d) => {
+       // 阻止事件冒泡到背景
+       event.stopPropagation()
+       
+       selectedNode.value = d
+       emit('node-click', d)
+       
+       // 高亮当前节点 - 直接操作所有节点组
+       const nodeGroups = g.selectAll(".node")
+       if (nodeGroups && nodeGroups.size() > 0) {
+         nodeGroups.selectAll("circle")
+           .style("stroke-width", n => n.id === d.id ? (n.isTopNode ? 4 : 3) : (n.isTopNode ? 3 : 1.5))
+           .style("stroke", n => n.id === d.id ? "#409EFF" : (n.isTopNode ? "#FF4500" : "#2c3e50"))
+           .style("fill", n => {
+             if (n.id === d.id) return getNodeColor(n) // 当前节点保持原色
+             // 检查是否与当前节点相连
+             const isConnected = links.some(l => {
+               const sourceId = l.source.id || l.source
+               const targetId = l.target.id || l.target
+               return (sourceId === d.id && targetId === n.id) ||
+                      (sourceId === n.id && targetId === d.id)
+             })
+             return isConnected ? "#FFD700" : getNodeColor(n) // 相连节点高亮为金色
+           })
+       }
+       
+       // 高亮相关边
+       if (linkElements && linkElements.size() > 0) {
+         linkElements
+           .style("stroke", l => isLinkRelatedToNode(l, d) ? "#409EFF" : "#999")
+           .style("stroke-width", l => isLinkRelatedToNode(l, d) ? 2 : 1)
+           .style("stroke-opacity", l => isLinkRelatedToNode(l, d) ? 1 : 0.3)
+       }
+       
+       // 显示与当前节点相关的边的标签
+       if (linkTextElements && linkTextElements.size() > 0) {
+         linkTextElements
+           .style("opacity", l => isLinkRelatedToNode(l, d) ? 1 : 0)
+           .style("fill", l => isLinkRelatedToNode(l, d) ? "#409EFF" : "#666")
+           .style("font-weight", l => isLinkRelatedToNode(l, d) ? "bold" : "normal")
+       }
+     }
 
-    const handleNodeMouseover = (event, d) => {
-      // 高亮当前节点和相关边
-      d3.select(event.currentTarget)
-        .select("circle")
-        .style("stroke-width", d.isTopNode ? 4 : 3)
-        .style("stroke", "#409EFF")
+              const handleNodeMouseover = (event, d) => {
+       // 高亮当前节点和相连节点 - 直接操作所有节点组
+       const nodeGroups = g.selectAll(".node")
+       if (nodeGroups && nodeGroups.size() > 0) {
+         nodeGroups.selectAll("circle")
+           .style("stroke-width", n => n.id === d.id ? (n.isTopNode ? 4 : 3) : (n.isTopNode ? 3 : 1.5))
+           .style("stroke", n => n.id === d.id ? "#409EFF" : (n.isTopNode ? "#FF4500" : "#2c3e50"))
+           .style("fill", n => {
+             if (n.id === d.id) return getNodeColor(n) // 当前节点保持原色
+             // 检查是否与当前节点相连
+             const isConnected = links.some(l => {
+               const sourceId = l.source.id || l.source
+               const targetId = l.target.id || l.target
+               return (sourceId === d.id && targetId === n.id) ||
+                      (sourceId === n.id && targetId === d.id)
+             })
+             return isConnected ? "#FFD700" : getNodeColor(n) // 相连节点高亮为金色
+           })
+       }
 
-      // 高亮相关边
-      if (linkElements && linkElements.size() > 0) {
-        linkElements
-          .style("stroke", l => (l.source === d || l.target === d) ? "#409EFF" : "#999")
-          .style("stroke-width", l => (l.source === d || l.target === d) ? 2 : 1)
-          .style("stroke-opacity", l => (l.source === d || l.target === d) ? 1 : 0.3)
-      }
-    }
+       // 高亮相关边
+       if (linkElements && linkElements.size() > 0) {
+         linkElements
+           .style("stroke", l => isLinkRelatedToNode(l, d) ? "#409EFF" : "#999")
+           .style("stroke-width", l => isLinkRelatedToNode(l, d) ? 2 : 1)
+           .style("stroke-opacity", l => isLinkRelatedToNode(l, d) ? 1 : 0.3)
+       }
 
-    const handleNodeMouseout = (event, d) => {
-      // 恢复节点样式
-      d3.select(event.currentTarget)
-        .select("circle")
-        .style("stroke-width", d.isTopNode ? 3 : 1.5)
-        .style("stroke", d.isTopNode ? "#FF4500" : "#2c3e50")
+       // 高亮相关边的文本标签（在鼠标悬停时显示相关边的标签）
+       if (linkTextElements && linkTextElements.size() > 0) {
+         linkTextElements
+           .style("opacity", l => isLinkRelatedToNode(l, d) ? 1 : 0)
+           .style("fill", l => isLinkRelatedToNode(l, d) ? "#409EFF" : "#666")
+           .style("font-weight", l => isLinkRelatedToNode(l, d) ? "bold" : "normal")
+       }
+     }
 
-      // 恢复边样式
-      if (linkElements && linkElements.size() > 0) {
-        linkElements
-          .style("stroke", "#999")
-          .style("stroke-width", 1)
-          .style("stroke-opacity", 0.6)
-      }
-    }
+         const handleNodeMouseout = (event, d) => {
+       // 如果有选中的节点，保持选中状态的高亮效果
+       if (selectedNode.value) {
+         const selectedNodeData = selectedNode.value
+         
+         // 保持选中节点的高亮效果
+         const nodeGroups = g.selectAll(".node")
+         if (nodeGroups && nodeGroups.size() > 0) {
+           nodeGroups.selectAll("circle")
+             .style("stroke-width", n => n.id === selectedNodeData.id ? (n.isTopNode ? 4 : 3) : (n.isTopNode ? 3 : 1.5))
+             .style("stroke", n => n.id === selectedNodeData.id ? "#409EFF" : (n.isTopNode ? "#FF4500" : "#2c3e50"))
+             .style("fill", n => {
+               if (n.id === selectedNodeData.id) return getNodeColor(n) // 当前节点保持原色
+               // 检查是否与选中节点相连
+               const isConnected = links.some(l => {
+                 const sourceId = l.source.id || l.source
+                 const targetId = l.target.id || l.target
+                 return (sourceId === selectedNodeData.id && targetId === n.id) ||
+                        (sourceId === n.id && targetId === selectedNodeData.id)
+               })
+               return isConnected ? "#FFD700" : getNodeColor(n) // 相连节点高亮为金色
+             })
+         }
+         
+         // 保持相关边的高亮
+         if (linkElements && linkElements.size() > 0) {
+           linkElements
+             .style("stroke", l => isLinkRelatedToNode(l, selectedNodeData) ? "#409EFF" : "#999")
+             .style("stroke-width", l => isLinkRelatedToNode(l, selectedNodeData) ? 2 : 1)
+             .style("stroke-opacity", l => isLinkRelatedToNode(l, selectedNodeData) ? 1 : 0.3)
+         }
+         
+         // 保持边标签的显示
+         if (linkTextElements && linkTextElements.size() > 0) {
+           linkTextElements
+             .style("opacity", l => isLinkRelatedToNode(l, selectedNodeData) ? 1 : 0)
+             .style("fill", l => isLinkRelatedToNode(l, selectedNodeData) ? "#409EFF" : "#666")
+             .style("font-weight", l => isLinkRelatedToNode(l, selectedNodeData) ? "bold" : "normal")
+         }
+       } else {
+         // 没有选中节点时，恢复默认样式
+         if (linkElements && linkElements.size() > 0) {
+           linkElements
+             .style("stroke", "#999")
+             .style("stroke-width", 1)
+             .style("stroke-opacity", 0.6)
+         }
+
+         const nodeGroups = g.selectAll(".node")
+         if (nodeGroups && nodeGroups.size() > 0) {
+           nodeGroups.selectAll("circle")
+             .style("stroke-width", n => n.isTopNode ? 3 : 1.5)
+             .style("stroke", n => n.isTopNode ? "#FF4500" : "#2c3e50")
+             .style("fill", n => getNodeColor(n))
+         }
+
+         if (linkTextElements && linkTextElements.size() > 0) {
+           linkTextElements
+             .style("opacity", 0)
+             .style("fill", "#666")
+             .style("font-weight", "normal")
+         }
+       }
+     }
+
+     // 背景点击事件
+     const handleBackgroundClick = (event) => {
+       // 如果点击的是背景而不是节点，则隐藏所有边的标签
+       if (event.target === svg.node() || event.target === g.node()) {
+         selectedNode.value = null
+         
+         // 恢复所有节点的样式 - 直接操作所有节点组
+         const nodeGroups = g.selectAll(".node")
+         if (nodeGroups && nodeGroups.size() > 0) {
+           nodeGroups.selectAll("circle")
+             .style("fill", n => getNodeColor(n))
+             .style("stroke-width", n => n.isTopNode ? 3 : 1.5)
+             .style("stroke", n => n.isTopNode ? "#FF4500" : "#2c3e50")
+         }
+         
+         // 恢复所有边的样式
+         if (linkElements && linkElements.size() > 0) {
+           linkElements
+             .style("stroke", "#999")
+             .style("stroke-width", 1)
+             .style("stroke-opacity", 0.6)
+         }
+         
+         if (linkTextElements && linkTextElements.size() > 0) {
+           linkTextElements
+             .style("opacity", 0)
+             .style("fill", "#666")
+             .style("font-weight", "normal")
+         }
+       }
+     }
 
     // 缩放控制
     const zoomIn = () => {
@@ -1004,7 +1193,14 @@ export default {
   pointer-events: none;
 }
 
-:deep(.link) {
-  transition: stroke 0.2s ease, stroke-width 0.2s ease, stroke-opacity 0.2s ease;
-}
+ :deep(.link) {
+   transition: stroke 0.2s ease, stroke-width 0.2s ease, stroke-opacity 0.2s ease;
+ }
+
+ :deep(.link-text) {
+   user-select: none;
+   pointer-events: none;
+   font-family: Arial, sans-serif;
+   font-weight: 500;
+ }
 </style>
