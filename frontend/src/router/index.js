@@ -4,6 +4,7 @@ import Dashboard from '../views/Dashboard.vue'
 import Tables from '../views/Tables.vue'
 import Query from '../views/Query.vue'
 import Import from '../views/Import.vue'
+import KnowledgeGraph from '../views/KnowledgeGraph.vue'
 
 const routes = [
   {
@@ -34,6 +35,11 @@ const routes = [
     path: '/import',
     name: 'Import',
     component: Import
+  },
+  {
+    path: '/knowledge-graph',
+    name: 'KnowledgeGraph',
+    component: KnowledgeGraph
   }
 ]
 

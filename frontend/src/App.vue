@@ -63,6 +63,10 @@
               <el-icon><Upload /></el-icon>
               <span>数据导入</span>
             </el-menu-item>
+            <el-menu-item index="/knowledge-graph">
+              <el-icon><Share /></el-icon>
+              <span>知识图谱</span>
+            </el-menu-item>
           </el-menu>
         </el-aside>
         
@@ -77,7 +81,7 @@
 <script>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { DataBoard, Grid, Search, SwitchButton, Upload } from '@element-plus/icons-vue'
+import { DataBoard, Grid, Search, SwitchButton, Upload, Share } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { userState } from './utils/api'
 
@@ -88,7 +92,8 @@ export default {
     Grid,  
     Search,
     SwitchButton,
-    Upload
+    Upload,
+    Share
   },
   setup() {
     const router = useRouter()
