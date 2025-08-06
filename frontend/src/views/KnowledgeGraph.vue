@@ -208,6 +208,7 @@ export default {
     const processing = ref(false)
     const currentFile = ref(null)
     const graphData = ref({ nodes: [], links: [] })
+    const originalGraphData = ref({ nodes: [], links: [] })
     const statistics = ref({})
     const selectedNodeDetails = ref(null)
     const jsonPreview = ref('')
@@ -299,6 +300,11 @@ export default {
 
         if (response.data.success) {
           graphData.value = response.data.data
+          // 保存原始数据副本用于搜索功能
+          originalGraphData.value = {
+            nodes: [...response.data.data.nodes],
+            links: [...response.data.data.links]
+          }
           statistics.value = response.data.data.statistics || {}
           currentFile.value = {
             name: uploadFile.value.name,
@@ -502,6 +508,7 @@ export default {
         }
       ).then(() => {
         graphData.value = { nodes: [], links: [] }
+        originalGraphData.value = { nodes: [], links: [] }
         statistics.value = {}
         currentFile.value = null
         selectedNodeDetails.value = null
@@ -516,22 +523,21 @@ export default {
       // 不显示弹窗，右侧详情面板会自动显示
     }
 
-    const handleFilterChange = async (filters) => {
-      try {
-        const response = await api.post('/api/knowledge-graph/filter', {
-          graphData: graphData.value,
-          filters: filters,
-          userId: userState.userId,
-          userType: userState.userType
-        })
-
-        if (response.data.success) {
-          // 这里可以更新图谱显示，或者保持原数据不变，只在前端过滤
-          ElMessage.success('过滤条件已应用')
+    const handleFilterChange = (filteredData) => {
+      if (filteredData) {
+        // 搜索模式：使用过滤后的数据
+        graphData.value = {
+          nodes: filteredData.nodes,
+          links: filteredData.links
         }
-      } catch (error) {
-        console.error('过滤失败:', error)
-        ElMessage.error('过滤失败: ' + error.message)
+      } else {
+        // 清除搜索：恢复原始数据
+        if (originalGraphData.value) {
+          graphData.value = {
+            nodes: [...originalGraphData.value.nodes],
+            links: [...originalGraphData.value.links]
+          }
+        }
       }
     }
 

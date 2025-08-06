@@ -14,6 +14,36 @@
         </el-tag>
       </div>
       
+      <!-- 搜索区域 -->
+      <div class="toolbar-center">
+        <div class="search-container">
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索节点（支持多个关键词，用逗号分隔）"
+            @keyup.enter="handleSearch"
+            clearable
+            size="small"
+            class="search-input"
+          >
+            <template #append>
+              <el-button @click="handleSearch" size="small">
+                <el-icon><Search /></el-icon>
+              </el-button>
+            </template>
+          </el-input>
+          <div class="search-options" v-if="isSearchActive">
+            <el-button 
+              @click="clearSearch" 
+              size="small" 
+              type="info" 
+              plain
+            >
+              清除搜索
+            </el-button>
+          </div>
+        </div>
+      </div>
+      
       <div class="toolbar-right">
         <el-button-group size="small">
           <el-button @click="zoomIn" title="放大">
@@ -30,6 +60,16 @@
         <el-button @click="toggleFullscreen" size="small" type="primary">
           <el-icon><FullScreen /></el-icon>
           全屏
+        </el-button>
+        
+        <el-button 
+          @click="toggleIsolateView" 
+          size="small"
+          :type="isIsolateView ? 'warning' : 'default'"
+          :disabled="!isSearchActive"
+          title="隔离视图：只显示搜索相关的节点和边"
+        >
+          {{ isIsolateView ? '退出隔离' : '隔离视图' }}
         </el-button>
         
         <el-button @click="showStatistics = !showStatistics" size="small">
@@ -167,13 +207,14 @@
 <script>
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import * as d3 from 'd3'
-import { ElEmpty } from 'element-plus'
+import { ElEmpty, ElMessage } from 'element-plus'
 import { 
   ZoomIn, 
   ZoomOut, 
   Refresh, 
   FullScreen, 
-  Close 
+  Close,
+  Search 
 } from '@element-plus/icons-vue'
 
 export default {
@@ -184,6 +225,7 @@ export default {
     Refresh,
     FullScreen,
     Close,
+    Search,
     ElEmpty
   },
   props: {
@@ -204,6 +246,16 @@ export default {
     const isFullscreen = ref(false)
     const showStatistics = ref(false)
     const selectedNode = ref(null)
+    
+    // 搜索相关数据
+    const searchQuery = ref('')
+    const isSearchActive = ref(false)
+    const isIsolateView = ref(false)
+    const searchResults = ref({
+      nodes: [],
+      relatedNodes: new Set(),
+      relatedLinks: []
+    })
 
     // D3.js 相关变量
     let svg = null
@@ -556,8 +608,6 @@ export default {
             .on("drag", dragged)
             .on("end", dragended))
           .on("click", handleNodeClick)
-          .on("mouseover", handleNodeMouseover)
-          .on("mouseout", handleNodeMouseout)
 
         // 创建节点圆圈
         nodeElements = nodeGroups
@@ -688,108 +738,6 @@ export default {
        }
      }
 
-              const handleNodeMouseover = (event, d) => {
-       // 高亮当前节点和相连节点 - 直接操作所有节点组
-       const nodeGroups = g.selectAll(".node")
-       if (nodeGroups && nodeGroups.size() > 0) {
-         nodeGroups.selectAll("circle")
-           .style("stroke-width", n => n.id === d.id ? (n.isTopNode ? 4 : 3) : (n.isTopNode ? 3 : 1.5))
-           .style("stroke", n => n.id === d.id ? "#409EFF" : (n.isTopNode ? "#FF4500" : "#2c3e50"))
-           .style("fill", n => {
-             if (n.id === d.id) return getNodeColor(n) // 当前节点保持原色
-             // 检查是否与当前节点相连
-             const isConnected = links.some(l => {
-               const sourceId = l.source.id || l.source
-               const targetId = l.target.id || l.target
-               return (sourceId === d.id && targetId === n.id) ||
-                      (sourceId === n.id && targetId === d.id)
-             })
-             return isConnected ? "#FFD700" : getNodeColor(n) // 相连节点高亮为金色
-           })
-       }
-
-       // 高亮相关边
-       if (linkElements && linkElements.size() > 0) {
-         linkElements
-           .style("stroke", l => isLinkRelatedToNode(l, d) ? "#409EFF" : "#999")
-           .style("stroke-width", l => isLinkRelatedToNode(l, d) ? 2 : 1)
-           .style("stroke-opacity", l => isLinkRelatedToNode(l, d) ? 1 : 0.3)
-       }
-
-       // 高亮相关边的文本标签（在鼠标悬停时显示相关边的标签）
-       if (linkTextElements && linkTextElements.size() > 0) {
-         linkTextElements
-           .style("opacity", l => isLinkRelatedToNode(l, d) ? 1 : 0)
-           .style("fill", l => isLinkRelatedToNode(l, d) ? "#409EFF" : "#666")
-           .style("font-weight", l => isLinkRelatedToNode(l, d) ? "bold" : "normal")
-       }
-     }
-
-         const handleNodeMouseout = (event, d) => {
-       // 如果有选中的节点，保持选中状态的高亮效果
-       if (selectedNode.value) {
-         const selectedNodeData = selectedNode.value
-         
-         // 保持选中节点的高亮效果
-         const nodeGroups = g.selectAll(".node")
-         if (nodeGroups && nodeGroups.size() > 0) {
-           nodeGroups.selectAll("circle")
-             .style("stroke-width", n => n.id === selectedNodeData.id ? (n.isTopNode ? 4 : 3) : (n.isTopNode ? 3 : 1.5))
-             .style("stroke", n => n.id === selectedNodeData.id ? "#409EFF" : (n.isTopNode ? "#FF4500" : "#2c3e50"))
-             .style("fill", n => {
-               if (n.id === selectedNodeData.id) return getNodeColor(n) // 当前节点保持原色
-               // 检查是否与选中节点相连
-               const isConnected = links.some(l => {
-                 const sourceId = l.source.id || l.source
-                 const targetId = l.target.id || l.target
-                 return (sourceId === selectedNodeData.id && targetId === n.id) ||
-                        (sourceId === n.id && targetId === selectedNodeData.id)
-               })
-               return isConnected ? "#FFD700" : getNodeColor(n) // 相连节点高亮为金色
-             })
-         }
-         
-         // 保持相关边的高亮
-         if (linkElements && linkElements.size() > 0) {
-           linkElements
-             .style("stroke", l => isLinkRelatedToNode(l, selectedNodeData) ? "#409EFF" : "#999")
-             .style("stroke-width", l => isLinkRelatedToNode(l, selectedNodeData) ? 2 : 1)
-             .style("stroke-opacity", l => isLinkRelatedToNode(l, selectedNodeData) ? 1 : 0.3)
-         }
-         
-         // 保持边标签的显示
-         if (linkTextElements && linkTextElements.size() > 0) {
-           linkTextElements
-             .style("opacity", l => isLinkRelatedToNode(l, selectedNodeData) ? 1 : 0)
-             .style("fill", l => isLinkRelatedToNode(l, selectedNodeData) ? "#409EFF" : "#666")
-             .style("font-weight", l => isLinkRelatedToNode(l, selectedNodeData) ? "bold" : "normal")
-         }
-       } else {
-         // 没有选中节点时，恢复默认样式
-         if (linkElements && linkElements.size() > 0) {
-           linkElements
-             .style("stroke", "#999")
-             .style("stroke-width", 1)
-             .style("stroke-opacity", 0.6)
-         }
-
-         const nodeGroups = g.selectAll(".node")
-         if (nodeGroups && nodeGroups.size() > 0) {
-           nodeGroups.selectAll("circle")
-             .style("stroke-width", n => n.isTopNode ? 3 : 1.5)
-             .style("stroke", n => n.isTopNode ? "#FF4500" : "#2c3e50")
-             .style("fill", n => getNodeColor(n))
-         }
-
-         if (linkTextElements && linkTextElements.size() > 0) {
-           linkTextElements
-             .style("opacity", 0)
-             .style("fill", "#666")
-             .style("font-weight", "normal")
-         }
-       }
-     }
-
      // 背景点击事件
      const handleBackgroundClick = (event) => {
        // 如果点击的是背景而不是节点，则隐藏所有边的标签
@@ -900,6 +848,215 @@ export default {
       }
     }
 
+    // 搜索相关方法
+    const handleSearch = () => {
+      if (!searchQuery.value.trim()) {
+        clearSearch()
+        return
+      }
+
+      // 将查询字符串按中英文逗号、分号分割成多个节点名称
+      const queryNodes = searchQuery.value
+        .split(/[,;，；]/)
+        .map(name => name.trim().toLowerCase())
+        .filter(name => name.length > 0)
+
+      if (queryNodes.length === 0) {
+        ElMessage.warning('请输入有效的搜索关键词')
+        return
+      }
+
+      // 查找目标节点
+      const targetNodes = props.graphData.nodes.filter(n => 
+        queryNodes.some(query => 
+          n.name.toLowerCase().includes(query) || 
+          n.id.toLowerCase().includes(query) ||
+          (n.type && n.type.toLowerCase().includes(query))
+        )
+      )
+
+      if (targetNodes.length === 0) {
+        ElMessage.warning('未找到任何匹配的节点')
+        return
+      }
+
+      // 获取相关节点和边
+      const relatedNodes = new Set()
+      const relatedLinks = []
+      
+      targetNodes.forEach(targetNode => {
+        relatedNodes.add(targetNode.id)
+        props.graphData.links.forEach(l => {
+          const sourceId = l.source.id || l.source
+          const targetId = l.target.id || l.target
+          if (sourceId === targetNode.id || targetId === targetNode.id) {
+            relatedNodes.add(sourceId)
+            relatedNodes.add(targetId)
+            relatedLinks.push(l)
+          }
+        })
+      })
+
+      // 更新搜索结果
+      searchResults.value = {
+        nodes: targetNodes,
+        relatedNodes,
+        relatedLinks
+      }
+      isSearchActive.value = true
+
+      // 如果当前是隔离视图，则切换到隔离模式
+      if (isIsolateView.value) {
+        isolateSearchResults()
+      } else {
+        // 高亮显示模式：在当前图谱中高亮搜索结果
+        highlightSearchResults()
+      }
+
+      ElMessage.success(`找到 ${targetNodes.length} 个匹配节点，${relatedNodes.size} 个相关节点`)
+    }
+
+    const highlightSearchResults = () => {
+      if (!isSearchActive.value || !g) return
+
+      const { nodes: targetNodes, relatedNodes } = searchResults.value
+
+      // 高亮目标节点
+      const nodeGroups = g.selectAll(".node")
+      if (nodeGroups && nodeGroups.size() > 0) {
+        nodeGroups.selectAll("circle")
+          .style("stroke-width", n => {
+            if (targetNodes.some(t => t.id === n.id)) return 4 // 搜索目标节点
+            if (relatedNodes.has(n.id)) return 2 // 相关节点
+            return n.isTopNode ? 3 : 1.5 // 其他节点
+          })
+          .style("stroke", n => {
+            if (targetNodes.some(t => t.id === n.id)) return "#FF4500" // 橙红色：搜索目标
+            if (relatedNodes.has(n.id)) return "#409EFF" // 蓝色：相关节点
+            return n.isTopNode ? "#FF4500" : "#2c3e50" // 默认颜色
+          })
+          .style("fill", n => {
+            if (targetNodes.some(t => t.id === n.id)) return "#FF6B35" // 目标节点填充色
+            if (relatedNodes.has(n.id)) return "#87CEEB" // 相关节点填充色
+            return getNodeColor(n) // 其他节点保持原色但透明度降低
+          })
+          .style("opacity", n => {
+            return relatedNodes.has(n.id) ? 1 : 0.3 // 非相关节点降低透明度
+          })
+      }
+
+      // 高亮相关边
+      if (linkElements && linkElements.size() > 0) {
+        linkElements
+          .style("stroke", l => {
+            const sourceId = l.source.id || l.source
+            const targetId = l.target.id || l.target
+            return relatedNodes.has(sourceId) && relatedNodes.has(targetId) ? "#409EFF" : "#999"
+          })
+          .style("stroke-width", l => {
+            const sourceId = l.source.id || l.source
+            const targetId = l.target.id || l.target
+            return relatedNodes.has(sourceId) && relatedNodes.has(targetId) ? 2 : 1
+          })
+          .style("stroke-opacity", l => {
+            const sourceId = l.source.id || l.source
+            const targetId = l.target.id || l.target
+            return relatedNodes.has(sourceId) && relatedNodes.has(targetId) ? 1 : 0.2
+          })
+      }
+
+      // 显示相关边的标签
+      if (linkTextElements && linkTextElements.size() > 0) {
+        linkTextElements
+          .style("opacity", l => {
+            const sourceId = l.source.id || l.source
+            const targetId = l.target.id || l.target
+            return relatedNodes.has(sourceId) && relatedNodes.has(targetId) ? 1 : 0
+          })
+          .style("fill", "#409EFF")
+          .style("font-weight", "bold")
+      }
+    }
+
+    const isolateSearchResults = () => {
+      if (!isSearchActive.value) return
+
+      const { relatedNodes, relatedLinks } = searchResults.value
+      
+      // 创建过滤后的数据
+      const filteredNodes = props.graphData.nodes.filter(node => relatedNodes.has(node.id))
+      const filteredLinks = props.graphData.links.filter(link => {
+        const sourceId = link.source.id || link.source
+        const targetId = link.target.id || link.target
+        return relatedNodes.has(sourceId) && relatedNodes.has(targetId)
+      })
+
+      // 触发过滤变化事件，让父组件知道数据被过滤了
+      emit('filter-change', { nodes: filteredNodes, links: filteredLinks })
+    }
+
+    const toggleIsolateView = () => {
+      if (!isSearchActive.value) return
+      
+      isIsolateView.value = !isIsolateView.value
+      
+      if (isIsolateView.value) {
+        // 切换到隔离视图
+        isolateSearchResults()
+        ElMessage.success('已切换到隔离视图')
+      } else {
+        // 切换回高亮视图
+        // 先恢复完整数据
+        emit('filter-change', null)
+        // 然后应用高亮
+        setTimeout(() => {
+          highlightSearchResults()
+        }, 50)
+        ElMessage.success('已切换到高亮视图')
+      }
+    }
+
+    const clearSearch = () => {
+      searchQuery.value = ''
+      isSearchActive.value = false
+      isIsolateView.value = false
+      searchResults.value = {
+        nodes: [],
+        relatedNodes: new Set(),
+        relatedLinks: []
+      }
+
+      // 恢复所有节点和边的默认样式
+      if (g) {
+        const nodeGroups = g.selectAll(".node")
+        if (nodeGroups && nodeGroups.size() > 0) {
+          nodeGroups.selectAll("circle")
+            .style("stroke-width", n => n.isTopNode ? 3 : 1.5)
+            .style("stroke", n => n.isTopNode ? "#FF4500" : "#2c3e50")
+            .style("fill", n => getNodeColor(n))
+            .style("opacity", 1)
+        }
+
+        if (linkElements && linkElements.size() > 0) {
+          linkElements
+            .style("stroke", "#999")
+            .style("stroke-width", 1)
+            .style("stroke-opacity", 0.6)
+        }
+
+        if (linkTextElements && linkTextElements.size() > 0) {
+          linkTextElements
+            .style("opacity", 0)
+            .style("fill", "#666")
+            .style("font-weight", "normal")
+        }
+      }
+
+      // 触发清除过滤事件
+      emit('filter-change', null)
+      ElMessage.info('已清除搜索结果')
+    }
+
     // 监听数据变化
     watch(() => props.graphData, () => {
       nextTick(() => {
@@ -938,20 +1095,30 @@ export default {
       isFullscreen,
       showStatistics,
       selectedNode,
+      
+      // search related
+      searchQuery,
+      isSearchActive,
+      isIsolateView,
 
       // computed
       graphHeight,
       nodeTypeStats,
 
-             // methods
-       zoomIn,
-       zoomOut,
-       resetZoom,
-       toggleFullscreen,
-       calculateNetworkDensity,
-       calculateAverageDegree,
-       formatPropertyLabel,
-       renderGraph
+      // methods
+      zoomIn,
+      zoomOut,
+      resetZoom,
+      toggleFullscreen,
+      calculateNetworkDensity,
+      calculateAverageDegree,
+      formatPropertyLabel,
+      renderGraph,
+      
+      // search methods
+      handleSearch,
+      clearSearch,
+      toggleIsolateView
     }
   }
 }
@@ -980,6 +1147,32 @@ export default {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.toolbar-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  margin: 0 20px;
+}
+
+.search-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-input {
+  width: 400px;
+  max-width: 100%;
+}
+
+.search-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
 }
 
 .main-content {
