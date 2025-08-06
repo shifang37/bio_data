@@ -526,11 +526,17 @@ public class KnowledgeGraphService {
                     link.put("type", row.get(relationCol));
                 }
                 
+                // 处理特殊字段
+                String colorCol = getColumnName(firstRow, Arrays.asList("color", "colour", "edge_color"));
+                if (colorCol != null && row.get(colorCol) != null) {
+                    link.put("color", row.get(colorCol));
+                }
+                
                 // 添加其他属性
                 Map<String, Object> properties = new HashMap<>();
                 for (Map.Entry<String, Object> entry : row.entrySet()) {
                     String key = entry.getKey();
-                    if (!key.equals(sourceCol) && !key.equals(targetCol) && !key.equals(relationCol)) {
+                    if (!key.equals(sourceCol) && !key.equals(targetCol) && !key.equals(relationCol) && !key.equals(colorCol)) {
                         properties.put(key, entry.getValue());
                     }
                 }

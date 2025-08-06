@@ -579,7 +579,7 @@ export default {
           .enter()
           .append("line")
           .attr("class", "link")
-          .style("stroke", "#999")
+          .style("stroke", d => d.color || "#999") // 使用CSV中的color字段，如果没有则使用默认颜色
           .style("stroke-opacity", 0.6)
           .style("stroke-width", 1)
 
@@ -1039,7 +1039,7 @@ export default {
 
         if (linkElements && linkElements.size() > 0) {
           linkElements
-            .style("stroke", "#999")
+            .style("stroke", d => d.color || "#999")
             .style("stroke-width", 1)
             .style("stroke-opacity", 0.6)
         }
