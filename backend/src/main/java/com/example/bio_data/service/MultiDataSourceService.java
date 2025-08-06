@@ -2,7 +2,7 @@ package com.example.bio_data.service;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import org.springframework.beans.factory.annotation.Autowired;
+//import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -24,7 +24,7 @@ public class MultiDataSourceService {
     // 存储所有JdbcTemplate
     private final Map<String, JdbcTemplate> jdbcTemplateMap = new ConcurrentHashMap<>();
 
-    @Autowired
+    //@Autowired
     public MultiDataSourceService(@Qualifier("primaryDataSource") DataSource primaryDataSource,
                                   @Qualifier("secondaryDataSource") DataSource secondaryDataSource,
                                   @Qualifier("loginDataSource") DataSource loginDataSource,

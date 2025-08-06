@@ -1443,7 +1443,7 @@ public class DatabaseController {
             List<Map<String, Object>> csvData = (List<Map<String, Object>>) request.get("csvData");
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> csvColumns = (List<Map<String, Object>>) request.get("csvColumns");
-            String primaryKeyColumn = (String) request.get("primaryKeyColumn");
+            //String primaryKeyColumn = (String) request.get("primaryKeyColumn");
             
             if (csvData == null || csvData.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "CSV数据不能为空"));
@@ -1572,7 +1572,7 @@ public class DatabaseController {
             for (Map<String, Object> column : columns) {
                 Map<String, Object> processedColumn = new HashMap<>(column);
                 
-                String dataType = (String) column.get("DATA_TYPE");
+                //String dataType = (String) column.get("DATA_TYPE");
                 String isNullable = (String) column.get("IS_NULLABLE");
                 String columnDefault = (String) column.get("COLUMN_DEFAULT");
                 String extra = (String) column.get("EXTRA");

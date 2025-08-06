@@ -104,7 +104,7 @@ public class SearchCacheService {
      * 清理过期的缓存条目
      */
     public void cleanupExpiredEntries() {
-        long currentTime = System.currentTimeMillis();
+        //long currentTime = System.currentTimeMillis();
         searchCache.entrySet().removeIf(entry -> 
             entry.getValue().isExpired(CACHE_TIMEOUT_MS) || 
             entry.getValue().isIdle(IDLE_TIMEOUT_MS)
@@ -153,7 +153,7 @@ public class SearchCacheService {
         stats.put("cacheTimeoutMinutes", CACHE_TIMEOUT_MS / (60 * 1000));
         stats.put("idleTimeoutMinutes", IDLE_TIMEOUT_MS / (60 * 1000));
         
-        long currentTime = System.currentTimeMillis();
+        //long currentTime = System.currentTimeMillis();
         long expiredCount = searchCache.values().stream()
             .mapToLong(entry -> entry.isExpired(CACHE_TIMEOUT_MS) || entry.isIdle(IDLE_TIMEOUT_MS) ? 1 : 0)
             .sum();

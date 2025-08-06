@@ -396,9 +396,9 @@ public class DatabaseService {
     /**
      * 检查表中是否包含指定值（完整搜索）
      */
-    private boolean checkTableForValueComplete(String dataSourceName, String tableName, String searchValue) {
-        return checkTableForValueWithMode(dataSourceName, tableName, searchValue, "all");
-    }
+    //private boolean checkTableForValueComplete(String dataSourceName, String tableName, String searchValue) {
+        //return checkTableForValueWithMode(dataSourceName, tableName, searchValue, "all");
+    //}
     
     /**
      * 检查表中是否包含指定值（支持搜索模式）
@@ -591,9 +591,9 @@ public class DatabaseService {
     /**
      * 获取匹配记录的准确数量（完整统计）并同时建立搜索缓存
      */
-    private int getActualMatchCount(String dataSourceName, String tableName, String searchValue) {
-        return getActualMatchCountWithMode(dataSourceName, tableName, searchValue, "all");
-    }
+    //private int getActualMatchCount(String dataSourceName, String tableName, String searchValue) {
+    //    return getActualMatchCountWithMode(dataSourceName, tableName, searchValue, "all");
+    //}
     
     /**
      * 获取匹配记录的准确数量（支持搜索模式）并同时建立搜索缓存

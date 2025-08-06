@@ -7,24 +7,28 @@
 ## 功能特性
 
 ### 🔧 数据解析
+
 - **JSON格式支持**: 标准的nodes-links格式知识图谱
 - **CSV格式支持**: 边列表格式（source, target, relation）
 - **智能检测**: 自动识别数据格式和结构
 - **数据验证**: 完整性检查和错误提示
 
 ### 📊 可视化展示
+
 - **网络图谱**: 使用vis-network渲染，支持力导向布局
 - **交互操作**: 缩放、拖拽、点击查看详情
 - **动态布局**: ForceAtlas2算法优化节点分布
 - **节点样式**: 根据类型自动着色和分组
 
 ### 🔍 分析功能
+
 - **节点搜索**: 按名称、ID或属性搜索节点
 - **数据过滤**: 按节点类型、关系类型过滤
 - **邻居查看**: 查看指定节点的邻居关系
 - **统计信息**: 节点数量、边数量、网络密度等
 
 ### 📁 数据管理
+
 - **多格式导出**: JSON、CSV、GraphML格式
 - **示例数据**: 内置生物医学知识图谱示例
 - **数据清理**: 支持重新加载和清除数据
@@ -32,11 +36,13 @@
 ## 使用方法
 
 ### 1. 访问知识图谱页面
+
 - 启动系统后，在导航菜单中点击"知识图谱"
 
 ### 2. 上传数据文件
 
 #### JSON格式
+
 ```json
 {
   "nodes": [
@@ -63,6 +69,7 @@
 ```
 
 #### CSV格式
+
 ```csv
 source,target,relation,evidence
 Gene_P53,Protein_ALK,regulates,STRING Database
@@ -72,12 +79,14 @@ Disease_LungCancer,Gene_EGFR,interacts_with,Published Paper
 ### 3. 图谱操作
 
 #### 基本操作
+
 - **缩放**: 使用工具栏的放大/缩小按钮或鼠标滚轮
 - **拖拽**: 拖拽画布移动视图，拖拽节点调整位置
 - **重置**: 点击重置按钮恢复初始视图
 - **全屏**: 点击全屏按钮进入全屏模式
 
 #### 节点交互
+
 - **点击节点**: 查看节点详细信息
 - **悬停提示**: 显示节点基本信息
 - **选择高亮**: 自动高亮相关连接
@@ -85,11 +94,13 @@ Disease_LungCancer,Gene_EGFR,interacts_with,Published Paper
 ### 4. 搜索和过滤
 
 #### 节点搜索
+
 - 在搜索框中输入关键词
 - 支持按节点名称、ID搜索
 - 匹配的节点会被高亮显示
 
 #### 数据过滤
+
 - 点击"过滤"按钮打开过滤对话框
 - 可按节点类型、关系类型过滤
 - 支持文本搜索过滤
@@ -97,6 +108,7 @@ Disease_LungCancer,Gene_EGFR,interacts_with,Published Paper
 ### 5. 统计信息
 
 点击"统计"按钮查看：
+
 - 节点数量和类型分布
 - 边数量和关系类型分布
 - 网络密度
@@ -105,6 +117,7 @@ Disease_LungCancer,Gene_EGFR,interacts_with,Published Paper
 ### 6. 数据导出
 
 点击"导出"下拉菜单选择格式：
+
 - **JSON**: 标准知识图谱格式
 - **CSV**: 边列表格式
 - **GraphML**: 图分析软件通用格式
@@ -112,12 +125,14 @@ Disease_LungCancer,Gene_EGFR,interacts_with,Published Paper
 ## 数据格式要求
 
 ### JSON格式要求
+
 - 必须包含`nodes`数组
 - 可选包含`links`或`edges`数组
 - 节点必须有`id`字段
 - 链接必须有`source`和`target`字段
 
 ### CSV格式要求
+
 - 边列表格式需要`source`、`target`列
 - 支持的列名变体：
   - source/target 或 nodes_a/nodes_b 或 from/to
@@ -127,17 +142,20 @@ Disease_LungCancer,Gene_EGFR,interacts_with,Published Paper
 ## 技术实现
 
 ### 前端技术
+
 - **Vue 3**: 响应式用户界面
 - **vis-network**: 网络图可视化
 - **Element Plus**: UI组件库
 - **PapaParse**: CSV文件解析
 
 ### 后端技术
+
 - **Spring Boot**: REST API服务
 - **Jackson**: JSON数据处理
 - **数据验证**: 完整性检查和格式验证
 
 ### 布局算法
+
 - **ForceAtlas2**: 力导向布局算法
 - **物理模拟**: 节点间引力和斥力
 - **动态稳定**: 自动收敛到最优布局
@@ -145,6 +163,7 @@ Disease_LungCancer,Gene_EGFR,interacts_with,Published Paper
 ## 示例数据
 
 系统内置了生物医学知识图谱示例数据，包含：
+
 - 蛋白质节点（Protein）
 - 基因节点（Gene）
 - 甲基化位点（Methylation）
@@ -155,20 +174,25 @@ Disease_LungCancer,Gene_EGFR,interacts_with,Published Paper
 ## 常见问题
 
 ### Q: 支持的文件大小限制？
+
 A: 建议单个文件不超过10MB，节点数量建议在1000个以内以保证良好的性能。
 
 ### Q: 如何优化大图的显示性能？
+
 A: 可以使用过滤功能减少显示的节点数量，或者使用聚类功能将相似节点分组。
 
 ### Q: 支持哪些图谱分析功能？
+
 A: 目前支持基本的统计分析、邻居查询、路径搜索等功能。
 
 ### Q: 如何自定义节点和边的样式？
+
 A: 系统根据节点的`type`或`label`字段自动分配颜色，支持常见的生物医学实体类型。
 
 ## 更新日志
 
 ### v1.0.0
+
 - 初始版本发布
 - 支持JSON和CSV格式解析
 - 基础可视化和交互功能
