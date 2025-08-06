@@ -403,49 +403,27 @@ export default {
          // 获取SVG的完整内容，包括所有节点和边
          const svgClone = svgElement.cloneNode(true)
          
-         // 移除缩放变换，确保看到完整的图谱
+         // 保持当前的缩放和视图变换，而不是移除它
+         // 这样导出的图片就是用户当前看到的视图
          const transformGroup = svgClone.querySelector('g')
          if (transformGroup) {
-           transformGroup.removeAttribute('transform')
-         }
-         
-         // 计算图谱的实际边界
-         const allElements = svgClone.querySelectorAll('*')
-         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-         
-         // 遍历所有元素找到边界
-         allElements.forEach(element => {
-           const bbox = element.getBBox ? element.getBBox() : null
-           if (bbox && bbox.width > 0 && bbox.height > 0) {
-             minX = Math.min(minX, bbox.x)
-             minY = Math.min(minY, bbox.y)
-             maxX = Math.max(maxX, bbox.x + bbox.width)
-             maxY = Math.max(maxY, bbox.y + bbox.height)
+           // 保持当前的transform属性，这样导出的就是当前视图
+           const currentTransform = transformGroup.getAttribute('transform')
+           if (currentTransform) {
+             // 如果当前没有变换（即默认视图），则移除transform属性
+             if (currentTransform === 'translate(0,0) scale(1)' || currentTransform === 'translate(0,0)') {
+               transformGroup.removeAttribute('transform')
+             }
+             // 否则保持当前的transform，这样导出的就是用户当前看到的视图
            }
-         })
-         
-         // 如果没有找到有效边界，使用容器尺寸
-         if (minX === Infinity) {
-           minX = 0
-           minY = 0
-           maxX = containerWidth
-           maxY = containerHeight
          }
          
-         // 添加边距
-         const padding = 50
-         minX -= padding
-         minY -= padding
-         maxX += padding
-         maxY += padding
-         
-         const viewBoxWidth = maxX - minX
-         const viewBoxHeight = maxY - minY
-         
-         // 确保SVG有正确的尺寸和viewBox
+         // 设置SVG尺寸为容器尺寸，这样导出的就是当前视图的大小
          svgClone.setAttribute('width', containerWidth)
          svgClone.setAttribute('height', containerHeight)
-         svgClone.setAttribute('viewBox', `${minX} ${minY} ${viewBoxWidth} ${viewBoxHeight}`)
+         
+         // 移除viewBox，让SVG使用绝对坐标，这样transform会正确应用
+         svgClone.removeAttribute('viewBox')
          
          // 将SVG转换为图片
          const svgData = new XMLSerializer().serializeToString(svgClone)
@@ -465,14 +443,14 @@ export default {
              const url = URL.createObjectURL(blob)
              const link = document.createElement('a')
              link.href = url
-             link.download = `knowledge-graph.${format}`
+             link.download = `knowledge-graph-view.${format}`
              document.body.appendChild(link)
              link.click()
              document.body.removeChild(link)
              URL.revokeObjectURL(url)
              URL.revokeObjectURL(svgUrl)
              
-             ElMessage.success(`图谱已导出为${format.toUpperCase()}格式`)
+             ElMessage.success(`当前视图已导出为${format.toUpperCase()}格式`)
            }, mimeType, quality)
          }
          
