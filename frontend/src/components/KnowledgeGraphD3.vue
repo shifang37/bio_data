@@ -437,10 +437,26 @@ export default {
       return betweenness
     }
 
-         // 基于度数计算节点大小
+         // 基于度数计算节点大小 - 优化大图显示
      const calculateNodeSize = (degree, maxDegree) => {
-       const minSize = 4
-       const maxSize = 12
+       const nodeCount = props.graphData.nodes?.length || 0
+       
+       // 根据图的大小动态调整节点大小范围
+       let minSize, maxSize
+       if (nodeCount > 100) {
+         // 大图：使用更小的节点尺寸
+         minSize = 3
+         maxSize = 8
+       } else if (nodeCount > 50) {
+         // 中等图：适中的节点尺寸
+         minSize = 4
+         maxSize = 10
+       } else {
+         // 小图：较大的节点尺寸
+         minSize = 5
+         maxSize = 12
+       }
+       
        if (maxDegree === 0) return minSize
        return minSize + (degree / maxDegree) * (maxSize - minSize)
      }
@@ -500,14 +516,31 @@ export default {
              svg.call(zoom)
          .on("click", handleBackgroundClick) // 添加背景点击事件
 
-      // 初始化力导向模拟
+      // 初始化力导向模拟 - 优化参数防止大图拥挤
+      const nodeCount = props.graphData.nodes?.length || 0
+      const linkCount = props.graphData.links?.length || 0
+      
+      // 根据图的大小动态调整参数
+      const isLargeGraph = nodeCount > 50 || linkCount > 100
+      const isMediumGraph = nodeCount > 20 || linkCount > 50
+      
+      // 动态调整距离参数
+      const baseDistance = isLargeGraph ? 120 : isMediumGraph ? 100 : 80
+      const linkStrength = isLargeGraph ? 0.6 : isMediumGraph ? 0.7 : 0.8
+      
+      // 动态调整斥力参数
+      const chargeStrength = isLargeGraph ? -200 : isMediumGraph ? -150 : -120
+      
+      // 动态调整碰撞半径
+      const collisionRadius = isLargeGraph ? 8 : isMediumGraph ? 5 : 2
+      
       simulation = d3.forceSimulation()
-        .force("link", d3.forceLink().id(d => d.id).distance(80).strength(0.8))
-        .force("charge", d3.forceManyBody().strength(-120))
+        .force("link", d3.forceLink().id(d => d.id).distance(baseDistance).strength(linkStrength))
+        .force("charge", d3.forceManyBody().strength(chargeStrength))
         .force("center", d3.forceCenter(width / 2, height / 2))
-        .force("collision", d3.forceCollide().radius(d => d.radius + 2))
+        .force("collision", d3.forceCollide().radius(d => d.radius + collisionRadius))
         .alphaTarget(0.01)
-        .alphaDecay(0.02)
+        .alphaDecay(isLargeGraph ? 0.03 : 0.02) // 大图使用更慢的衰减
     }
 
     // 渲染图谱
@@ -517,6 +550,15 @@ export default {
       loading.value = true
 
       try {
+        // 检查图的大小，决定是否使用简化渲染模式
+        const nodeCount = props.graphData.nodes?.length || 0
+        const isVeryLargeGraph = nodeCount > 300
+        
+        if (isVeryLargeGraph) {
+          console.log('检测到超大图，启用简化渲染模式')
+          // 对于超大图，可以隐藏部分节点标签以提高性能
+          // 这里可以添加额外的优化逻辑
+        }
         // 清除现有元素
         g.selectAll(".link").remove()
         g.selectAll(".link-text").remove()
@@ -618,7 +660,8 @@ export default {
           .style("stroke-width", d => d.isTopNode ? 3 : 1.5)
           .style("cursor", "pointer")
 
-        // 创建节点标签
+        // 创建节点标签 - 根据图大小优化显示
+        const shouldShowAllLabels = nodeCount <= 100
         textElements = nodeGroups
           .append("text")
           .attr("dx", d => d.radius + 3)
@@ -627,6 +670,11 @@ export default {
           .style("font-weight", d => d.isTopNode ? "bold" : "normal")
           .style("fill", "#2c3e50")
           .style("pointer-events", "none")
+          .style("opacity", d => {
+            // 大图只显示重要节点的标签
+            if (shouldShowAllLabels) return 1
+            return d.isTopNode || d.degree > (maxDegree * 0.5) ? 1 : 0
+          })
           .text(d => d.name || d.id)
 
         // 更新力导向模拟
@@ -724,7 +772,7 @@ export default {
        // 高亮相关边
        if (linkElements && linkElements.size() > 0) {
          linkElements
-           .style("stroke", l => isLinkRelatedToNode(l, d) ? "#409EFF" : "#999")
+           .style("stroke", l => isLinkRelatedToNode(l, d) ? "#409EFF" : (l.color || "#999"))
            .style("stroke-width", l => isLinkRelatedToNode(l, d) ? 2 : 1)
            .style("stroke-opacity", l => isLinkRelatedToNode(l, d) ? 1 : 0.3)
        }
@@ -753,10 +801,10 @@ export default {
              .style("stroke", n => n.isTopNode ? "#FF4500" : "#2c3e50")
          }
          
-         // 恢复所有边的样式
+         // 恢复所有边的样式 - 保持原始颜色
          if (linkElements && linkElements.size() > 0) {
            linkElements
-             .style("stroke", "#999")
+             .style("stroke", d => d.color || "#999")
              .style("stroke-width", 1)
              .style("stroke-opacity", 0.6)
          }
@@ -951,7 +999,7 @@ export default {
           .style("stroke", l => {
             const sourceId = l.source.id || l.source
             const targetId = l.target.id || l.target
-            return relatedNodes.has(sourceId) && relatedNodes.has(targetId) ? "#409EFF" : "#999"
+            return relatedNodes.has(sourceId) && relatedNodes.has(targetId) ? "#409EFF" : (l.color || "#999")
           })
           .style("stroke-width", l => {
             const sourceId = l.source.id || l.source
@@ -1057,10 +1105,44 @@ export default {
       ElMessage.info('已清除搜索结果')
     }
 
+    // 自动优化大图的布局参数
+    const optimizeLayoutForGraphSize = () => {
+      if (!simulation || !props.graphData.nodes) return
+      
+      const nodeCount = props.graphData.nodes.length
+      const linkCount = props.graphData.links?.length || 0
+      
+      // 对于超大图（>200节点），进一步优化参数
+      if (nodeCount > 200) {
+        simulation.force("link").distance(150).strength(0.4)
+        simulation.force("charge").strength(-300)
+        simulation.force("collision").radius(d => d.radius + 12)
+        simulation.alphaDecay(0.04)
+        console.log('应用超大图优化参数')
+      } else if (nodeCount > 100) {
+        simulation.force("link").distance(130).strength(0.5)
+        simulation.force("charge").strength(-250)
+        simulation.force("collision").radius(d => d.radius + 10)
+        simulation.alphaDecay(0.035)
+        console.log('应用大图优化参数')
+      } else if (nodeCount > 50) {
+        simulation.force("link").distance(110).strength(0.6)
+        simulation.force("charge").strength(-200)
+        simulation.force("collision").radius(d => d.radius + 8)
+        simulation.alphaDecay(0.03)
+        console.log('应用中图优化参数')
+      }
+      
+      // 重新启动模拟以应用新参数
+      simulation.alpha(0.3).restart()
+    }
+
     // 监听数据变化
     watch(() => props.graphData, () => {
       nextTick(() => {
         renderGraph()
+        // 自动优化大图的布局参数
+        optimizeLayoutForGraphSize()
       })
     }, { deep: true })
 
@@ -1118,7 +1200,10 @@ export default {
       // search methods
       handleSearch,
       clearSearch,
-      toggleIsolateView
+      toggleIsolateView,
+      
+      // optimization methods
+      optimizeLayoutForGraphSize
     }
   }
 }
