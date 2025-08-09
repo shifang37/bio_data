@@ -1,14 +1,11 @@
 package com.example.bio_data.controller;
 
-import com.example.bio_data.entity.User;
-import com.example.bio_data.entity.Admin;
 import com.example.bio_data.service.AuthService;
 import com.example.bio_data.service.PermissionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
