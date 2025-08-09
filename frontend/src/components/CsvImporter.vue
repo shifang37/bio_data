@@ -565,6 +565,8 @@ export default {
       let hasDecimal = false;
       let hasDate = false;
       let maxLength = 0;
+      let maxIntegerValue = 0;
+      let minIntegerValue = 0;
       
       for (const value of values) {
         const str = String(value).trim();
@@ -573,6 +575,9 @@ export default {
         // 检查是否为数字
         if (/^\d+$/.test(str)) {
           hasNumber = true;
+          const numValue = parseInt(str);
+          maxIntegerValue = Math.max(maxIntegerValue, numValue);
+          minIntegerValue = Math.min(minIntegerValue, numValue);
         } else if (/^\d*\.\d+$/.test(str)) {
           hasDecimal = true;
         } else if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
@@ -583,9 +588,28 @@ export default {
       if (hasDate) return 'DATETIME';
       if (hasDecimal) return 'DECIMAL(10,2)';
       if (hasNumber) {
-        const maxValue = Math.max(...values.map(v => parseInt(v) || 0));
-        if (maxValue < 2147483647) return 'INT';
-        return 'BIGINT';
+        // 更保守的整数类型推断策略
+        // 如果数据量较少（少于1000条），使用更保守的推断
+        const sampleSize = values.length;
+        const isSmallSample = sampleSize < 1000;
+        
+        // 对于小样本，直接使用BIGINT以确保安全
+        if (isSmallSample) {
+          return 'BIGINT';
+        }
+        
+        // 对于大样本，根据实际数值范围推断
+        if (maxIntegerValue <= 127 && minIntegerValue >= -128) {
+          return 'TINYINT';
+        } else if (maxIntegerValue <= 32767 && minIntegerValue >= -32768) {
+          return 'SMALLINT';
+        } else if (maxIntegerValue <= 8388607 && minIntegerValue >= -8388608) {
+          return 'MEDIUMINT';
+        } else if (maxIntegerValue <= 2147483647 && minIntegerValue >= -2147483648) {
+          return 'INT';
+        } else {
+          return 'BIGINT';
+        }
       }
       
       if (maxLength <= 255) return `VARCHAR(${Math.max(255, maxLength + 50)})`;

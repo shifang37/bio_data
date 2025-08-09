@@ -294,10 +294,20 @@
     </div>
 
     <!-- 表结构对话框 -->
-    <el-dialog v-model="structureDialogVisible" :title="`表结构 - ${selectedTable}`" width="70%">
+    <el-dialog v-model="structureDialogVisible" :title="`表结构 - ${selectedTable}`" width="80%">
+      <div style="margin-bottom: 15px;">
+        <el-alert
+          title="修改表结构"
+          description="您可以修改列的数据类型来解决数据范围问题。修改前请确保数据安全。"
+          type="info"
+          :closable="false"
+          show-icon
+        />
+      </div>
+      
       <el-table :data="tableColumns" style="width: 100%">
         <el-table-column prop="COLUMN_NAME" label="列名" width="150" />
-        <el-table-column prop="DATA_TYPE" label="数据类型" width="120" />
+        <el-table-column prop="DATA_TYPE" label="当前数据类型" width="120" />
         <el-table-column prop="IS_NULLABLE" label="是否可空" width="100">
           <template #default="scope">
             <el-tag :type="scope.row.IS_NULLABLE === 'YES' ? 'success' : 'danger'">
@@ -315,7 +325,93 @@
         </el-table-column>
         <el-table-column prop="EXTRA" label="额外信息" width="120" />
         <el-table-column prop="COLUMN_COMMENT" label="注释" />
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="scope">
+            <el-button 
+              size="small" 
+              type="primary" 
+              @click="showModifyColumnDialog(scope.row)"
+              :disabled="!canModifyCurrentDatabase"
+            >
+              修改类型
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
+    </el-dialog>
+
+    <!-- 修改列数据类型对话框 -->
+    <el-dialog v-model="modifyColumnDialogVisible" :title="`修改列数据类型 - ${modifyColumn?.COLUMN_NAME}`" width="600px">
+      <el-form :model="modifyColumnForm" label-width="120px" :rules="modifyColumnRules" ref="modifyColumnFormRef">
+        <el-form-item label="列名">
+          <el-input v-model="modifyColumnForm.columnName" disabled />
+        </el-form-item>
+        
+        <el-form-item label="当前类型">
+          <el-input v-model="modifyColumnForm.currentType" disabled />
+        </el-form-item>
+        
+        <el-form-item label="新数据类型" prop="newDataType">
+          <el-select v-model="modifyColumnForm.newDataType" placeholder="选择数据类型" style="width: 100%;">
+            <el-option-group
+              v-for="group in dataTypeGroups"
+              :key="group.category"
+              :label="group.category"
+            >
+              <el-option
+                v-for="type in group.types"
+                :key="type.name"
+                :label="type.displayName"
+                :value="type.name"
+              >
+                <span>{{ type.displayName }}</span>
+                <span style="float: right; color: #8492a6; font-size: 12px;">{{ type.name }}</span>
+              </el-option>
+            </el-option-group>
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="长度" v-if="needsLength(modifyColumnForm.newDataType)">
+          <el-input 
+            v-model="modifyColumnForm.newLength" 
+            placeholder="长度"
+            type="number"
+            min="1"
+          />
+        </el-form-item>
+        
+        <el-form-item label="小数位" v-if="needsDecimals(modifyColumnForm.newDataType)">
+          <el-input 
+            v-model="modifyColumnForm.newDecimals" 
+            placeholder="小数位"
+            type="number"
+            min="0"
+            max="30"
+          />
+        </el-form-item>
+        
+        <el-form-item>
+          <el-alert
+            title="注意事项"
+            type="warning"
+            :closable="false"
+            show-icon
+          >
+            <template #default>
+              <p style="margin: 0;">1. 修改数据类型可能会影响现有数据</p>
+              <p style="margin: 0;">2. 建议先备份重要数据</p>
+              <p style="margin: 0;">3. 对于整数类型，建议使用BIGINT避免范围问题</p>
+            </template>
+          </el-alert>
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <el-button @click="modifyColumnDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmModifyColumn" :loading="modifyingColumn">
+          确认修改
+        </el-button>
+      </template>
     </el-dialog>
 
     <!-- 表数据对话框 -->
@@ -1301,6 +1397,59 @@ export default {
     const canCreateDatabase = ref(false)
     const permissionMessage = ref('')
     
+    // 修改表结构相关
+    const modifyColumnDialogVisible = ref(false)
+    const modifyingColumn = ref(false)
+    const modifyColumnFormRef = ref(null)
+    const modifyColumn = ref(null)
+    const modifyColumnForm = ref({
+      columnName: '',
+      currentType: '',
+      newDataType: '',
+      newLength: '',
+      newDecimals: ''
+    })
+    
+         // 数据类型分组（用于修改表结构）
+     const dataTypeGroups = computed(() => {
+       const groups = {}
+       
+       // 如果API数据为空，使用备用数据类型
+       let dataTypes = availableDataTypes.value
+       if (!dataTypes || dataTypes.length === 0) {
+         dataTypes = [
+           { name: 'TINYINT', displayName: '整数', category: '数值' },
+           { name: 'SMALLINT', displayName: '整数', category: '数值' },
+           { name: 'MEDIUMINT', displayName: '整数', category: '数值' },
+           { name: 'INT', displayName: '整数', category: '数值' },
+           { name: 'BIGINT', displayName: '整数', category: '数值' },
+           { name: 'DECIMAL', displayName: '小数', category: '数值' },
+           { name: 'FLOAT', displayName: '小数', category: '数值' },
+           { name: 'DOUBLE', displayName: '小数', category: '数值' },
+           { name: 'CHAR', displayName: '字符', category: '字符串' },
+           { name: 'VARCHAR', displayName: '字符', category: '字符串' },
+           { name: 'TEXT', displayName: '文本', category: '字符串' },
+           { name: 'LONGTEXT', displayName: '文本', category: '字符串' },
+           { name: 'DATE', displayName: '日期', category: '日期时间' },
+           { name: 'DATETIME', displayName: '日期时间', category: '日期时间' },
+           { name: 'TIMESTAMP', displayName: '时间戳', category: '日期时间' },
+           { name: 'JSON', displayName: 'JSON', category: '其他' }
+         ]
+       }
+       
+       dataTypes.forEach(type => {
+         if (!groups[type.category]) {
+           groups[type.category] = {
+             category: type.category,
+             types: []
+           }
+         }
+         groups[type.category].types.push(type)
+       })
+       
+       return Object.values(groups)
+     })
+    
     // 表单验证规则
     const databaseRules = {
       databaseName: [
@@ -1330,6 +1479,13 @@ export default {
           trigger: 'blur' 
         },
         { min: 1, max: 64, message: '表名长度在1到64个字符', trigger: 'blur' }
+      ]
+    }
+    
+    // 修改表结构验证规则
+    const modifyColumnRules = {
+      newDataType: [
+        { required: true, message: '请选择新的数据类型', trigger: 'change' }
       ]
     }
     
@@ -3294,6 +3450,66 @@ export default {
         }
       }
 
+      // 修改表结构相关方法
+      const showModifyColumnDialog = async (column) => {
+        // 强制重新加载数据类型
+        await loadDataTypes()
+        
+        modifyColumn.value = column
+        modifyColumnForm.value = {
+          columnName: column.COLUMN_NAME,
+          currentType: column.DATA_TYPE,
+          newDataType: column.DATA_TYPE,
+          newLength: '',
+          newDecimals: ''
+        }
+        modifyColumnDialogVisible.value = true
+      }
+
+      const confirmModifyColumn = async () => {
+        try {
+          // 表单验证
+          if (modifyColumnFormRef.value) {
+            const valid = await modifyColumnFormRef.value.validate()
+            if (!valid) return
+          }
+
+          modifyingColumn.value = true
+
+          const userInfo = userState.getUserInfo()
+          const requestData = {
+            dataSource: selectedDatabase.value,
+            databaseName: selectedDatabase.value,
+            tableName: selectedTable.value,
+            columnName: modifyColumnForm.value.columnName,
+            newDataType: modifyColumnForm.value.newDataType,
+            newLength: modifyColumnForm.value.newLength || null,
+            newDecimals: modifyColumnForm.value.newDecimals || null,
+            userId: userInfo.userId,
+            userType: userInfo.userType
+          }
+
+          const response = await api.put('/api/database/tables/modify', requestData)
+
+          if (response.data.success) {
+            ElMessage.success('表结构修改成功')
+            modifyColumnDialogVisible.value = false
+            
+            // 重新加载表结构
+            await viewTableStructure(selectedTable.value)
+          } else {
+            ElMessage.error(response.data.error || '修改表结构失败')
+          }
+
+        } catch (error) {
+          console.error('修改表结构失败:', error)
+          const errorMsg = error.response?.data?.error || error.message
+          ElMessage.error('修改表结构失败: ' + errorMsg)
+        } finally {
+          modifyingColumn.value = false
+        }
+      }
+
       // 计算属性：过滤后的表列表
       const filteredTableList = computed(() => {
         if (!searchQuery.value) {
@@ -3405,6 +3621,7 @@ export default {
       tableFormRef,
       tableDesign,
       tableRules,
+      modifyColumnRules,
       availableDataTypes,
       groupedDataTypes,
       generatedSQL,
@@ -3483,7 +3700,16 @@ export default {
       formatElapsedTime,
       cancelSearch,
       getSelectedDatabaseInfo,
-      getDatabaseColor
+      getDatabaseColor,
+      // 修改表结构相关
+      modifyColumnDialogVisible,
+      modifyingColumn,
+      modifyColumnFormRef,
+      modifyColumn,
+      modifyColumnForm,
+      dataTypeGroups,
+      showModifyColumnDialog,
+      confirmModifyColumn
     }
   }
 }

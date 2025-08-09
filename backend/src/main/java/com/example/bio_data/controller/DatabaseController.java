@@ -139,101 +139,7 @@ public class DatabaseController {
         }
     }
 
-    /**
-     * 添加新的数据源
-     */
-    @PostMapping("/datasources")
-    public ResponseEntity<?> addDataSource(@RequestBody Map<String, String> request) {
-        try {
-            String name = request.get("name");
-            String url = request.get("url");
-            String username = request.get("username");
-            String password = request.get("password");
 
-            if (name == null || url == null || username == null || password == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "缺少必需的参数"));
-            }
-
-            boolean success = databaseService.addDataSource(name, url, username, password);
-            if (success) {
-                return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "数据源添加成功",
-                    "dataSourceName", name
-                ));
-            } else {
-                return ResponseEntity.status(400).body(Map.of(
-                    "success", false,
-                    "error", "数据源添加失败"
-                ));
-            }
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of(
-                "success", false,
-                "error", "添加数据源失败: " + e.getMessage()
-            ));
-        }
-    }
-
-    /**
-     * 删除数据源
-     */
-    @DeleteMapping("/datasources/{dataSourceName}")
-    public ResponseEntity<?> removeDataSource(@PathVariable String dataSourceName) {
-        try {
-            boolean success = databaseService.removeDataSource(dataSourceName);
-            if (success) {
-                return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "数据源删除成功"
-                ));
-            } else {
-                return ResponseEntity.status(400).body(Map.of(
-                    "success", false,
-                    "error", "数据源删除失败"
-                ));
-            }
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of(
-                "success", false,
-                "error", "删除数据源失败: " + e.getMessage()
-            ));
-        }
-    }
-
-    /**
-     * 测试数据源连接
-     */
-    @GetMapping("/datasources/{dataSourceName}/test")
-    public ResponseEntity<?> testDataSourceConnection(@PathVariable String dataSourceName) {
-        try {
-            boolean connected = databaseService.testDataSourceConnection(dataSourceName);
-            return ResponseEntity.ok(Map.of(
-                "dataSourceName", dataSourceName,
-                "connected", connected,
-                "message", connected ? "连接成功" : "连接失败"
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of(
-                "dataSourceName", dataSourceName,
-                "connected", false,
-                "error", "连接测试失败: " + e.getMessage()
-            ));
-        }
-    }
-
-    /**
-     * 获取数据源统计信息
-     */
-    @GetMapping("/datasources/{dataSourceName}/stats")
-    public ResponseEntity<?> getDataSourceStats(@PathVariable String dataSourceName) {
-        try {
-            Map<String, Object> stats = databaseService.getDataSourceStats(dataSourceName);
-            return ResponseEntity.ok(stats);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "获取数据源统计失败: " + e.getMessage()));
-        }
-    }
 
     // =============================================================================
     // 数据库操作相关接口（支持多数据源）
@@ -376,25 +282,7 @@ public class DatabaseController {
         }
     }
 
-    /**
-     * 获取表的索引信息
-     */
-    @GetMapping("/tables/{tableName}/indexes")
-    public ResponseEntity<List<Map<String, Object>>> getTableIndexes(
-            @PathVariable String tableName,
-            @RequestParam(required = false) String dataSource) {
-        try {
-            List<Map<String, Object>> indexes;
-            if (dataSource != null && !dataSource.trim().isEmpty()) {
-                indexes = databaseService.getTableIndexes(dataSource, tableName);
-            } else {
-                indexes = databaseService.getTableIndexes(tableName);
-            }
-            return ResponseEntity.ok(indexes);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(null);
-        }
-    }
+
 
     /**
      * 执行自定义SQL查询
@@ -450,190 +338,16 @@ public class DatabaseController {
         }
     }
 
-    /**
-     * 根据字段名搜索包含该字段的表
-     */
-    @GetMapping("/search/tables-by-column")
-    public ResponseEntity<?> findTablesByColumn(
-            @RequestParam String columnName,
-            @RequestParam(required = false) String dataSource,
-            @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) String userType) {
-        try {
-            // 基本参数验证
-            if (columnName == null || columnName.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "字段名不能为空"));
-            }
-            
-            // 权限验证
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
-            if (permissionCheck != null) {
-                return permissionCheck;
-            }
-            
-            List<Map<String, Object>> tables;
-            if (dataSource != null && !dataSource.trim().isEmpty()) {
-                tables = databaseService.findTablesByColumn(dataSource, columnName);
-            } else {
-                tables = databaseService.findTablesByColumn(columnName);
-            }
-            
-            // 统计结果
-            Map<String, Object> result = new HashMap<>();
-            result.put("tables", tables);
-            result.put("totalCount", tables.size());
-            result.put("columnName", columnName);
-            result.put("dataSource", dataSource != null ? dataSource : "default");
-            
-            return ResponseEntity.ok(result);
-            
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "字段搜索失败: " + e.getMessage()));
-        }
-    }
+
+
+
+
+
+
+
 
     /**
-     * 根据字段名获取表中包含该字段的数据
-     */
-    @GetMapping("/search/data-by-column")
-    public ResponseEntity<?> getTableDataByColumn(
-            @RequestParam String tableName,
-            @RequestParam String columnName,
-            @RequestParam(defaultValue = "100") int limit,
-            @RequestParam(required = false) String dataSource,
-            @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) String userType) {
-        try {
-            // 基本参数验证
-            if (tableName == null || tableName.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "表名不能为空"));
-            }
-            if (columnName == null || columnName.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "字段名不能为空"));
-            }
-            
-            // 权限验证
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
-            if (permissionCheck != null) {
-                return permissionCheck;
-            }
-            
-            // 限制返回行数
-            if (limit > 1000) limit = 1000;
-            if (limit < 1) limit = 100;
-            
-            Map<String, Object> result;
-            if (dataSource != null && !dataSource.trim().isEmpty()) {
-                result = databaseService.getTableDataByColumn(dataSource, tableName, columnName, limit);
-            } else {
-                result = databaseService.getTableDataByColumn(tableName, columnName, limit);
-            }
-            
-            return ResponseEntity.ok(result);
-            
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "数据查询失败: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * 根据字段值搜索包含该值的所有表（类似Navicat的字段查找功能）
-     */
-    @GetMapping("/search/tables-by-value")
-    public ResponseEntity<?> findTablesByValue(
-            @RequestParam String searchValue,
-            @RequestParam(required = false) String dataSource,
-            @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) String userType,
-            @RequestParam(required = false, defaultValue = "auto") String searchMode) {
-        try {
-            // 基本参数验证
-            if (searchValue == null || searchValue.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "搜索值不能为空"));
-            }
-            
-            // 权限验证
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
-            if (permissionCheck != null) {
-                return permissionCheck;
-            }
-            
-            List<Map<String, Object>> tables;
-            if (dataSource != null && !dataSource.trim().isEmpty()) {
-                tables = databaseService.findTablesByValue(dataSource, searchValue, searchMode);
-            } else {
-                tables = databaseService.findTablesByValue(null, searchValue, searchMode);
-            }
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("tables", tables);
-            response.put("totalCount", tables.size());
-            response.put("searchValue", searchValue);
-            response.put("dataSource", dataSource);
-            response.put("searchMode", searchMode);
-            
-            // 根据搜索模式设置响应信息
-            if ("text_only".equals(searchMode)) {
-                response.put("searchInfo", "仅搜索文本字段");
-                response.put("searchType", "文本字段搜索");
-            } else if ("numeric_only".equals(searchMode)) {
-                response.put("searchInfo", "仅搜索数字字段");
-                response.put("searchType", "数字字段搜索");
-            } else if ("auto".equals(searchMode)) {
-                // 智能判断搜索模式
-                boolean isNumeric = isSearchValueNumeric(searchValue);
-                if (isNumeric) {
-                    response.put("searchInfo", "智能搜索：检测到数字，搜索数字字段");
-                    response.put("searchType", "智能数字搜索");
-                } else {
-                    response.put("searchInfo", "智能搜索：检测到文本，仅搜索文本字段");
-                    response.put("searchType", "智能文本搜索");
-                }
-            } else {
-                response.put("searchInfo", "完整数据搜索");
-                response.put("searchType", "全表全字段搜索");
-            }
-            
-            response.put("isCompleteSearch", "all".equals(searchMode));
-            response.put("timeoutMinutes", 5);
-            
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "字段值搜索失败: " + e.getMessage()));
-        }
-    }
-    
-    /**
-     * 判断搜索值是否为数字
-     */
-    private boolean isSearchValueNumeric(String searchValue) {
-        if (searchValue == null || searchValue.trim().isEmpty()) {
-            return false;
-        }
-        
-        String trimmed = searchValue.trim();
-        
-        // 检查是否为整数
-        try {
-            Long.parseLong(trimmed);
-            return true;
-        } catch (NumberFormatException e) {
-            // 继续检查小数
-        }
-        
-        // 检查是否为小数
-        try {
-            Double.parseDouble(trimmed);
-            return trimmed.contains(".");
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    /**
-     * 根据字段值搜索包含该值的所有表（实时进度版本，使用SSE）
+     * 带进度的字段值搜索（Server-Sent Events）
      */
     @GetMapping(value = "/search/tables-by-value-progress", produces = "text/event-stream")
     public SseEmitter searchTablesByValueWithProgress(
@@ -1266,86 +980,9 @@ public class DatabaseController {
         }
     }
     
-    /**
-     * 检查表是否存在
-     */
-    @GetMapping("/tables/exists")
-    public ResponseEntity<?> checkTableExists(
-            @RequestParam String dataSource,
-            @RequestParam String databaseName,
-            @RequestParam String tableName) {
-        try {
-            boolean exists = databaseService.tableExists(dataSource, databaseName, tableName);
-            return ResponseEntity.ok(Map.of(
-                "exists", exists,
-                "tableName", tableName,
-                "databaseName", databaseName
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "检查表是否存在失败: " + e.getMessage()));
-        }
-    }
 
-    // =============================================================================
-    // 缓存管理相关接口
-    // =============================================================================
 
-    /**
-     * 清理搜索缓存
-     */
-    @PostMapping("/cache/clear")
-    public ResponseEntity<?> clearSearchCache(@RequestBody Map<String, Object> request) {
-        try {
-            Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
-            
-            // 权限验证 - 只有登录用户可以清理缓存
-            if (userId == null || userType == null) {
-                return ResponseEntity.status(401).body(Map.of("error", "用户未登录"));
-            }
-            
-            String dataSource = (String) request.get("dataSource");
-            String tableName = (String) request.get("tableName");
-            
-            if (tableName != null && !tableName.trim().isEmpty()) {
-                // 清理特定表的缓存
-                databaseService.clearTableSearchCache(dataSource, tableName);
-                return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "表 " + tableName + " 的搜索缓存已清理"
-                ));
-            } else {
-                // 清理所有缓存
-                databaseService.clearAllSearchCache();
-                return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "所有搜索缓存已清理"
-                ));
-            }
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "清理缓存失败: " + e.getMessage()));
-        }
-    }
 
-    /**
-     * 获取搜索缓存统计信息
-     */
-    @GetMapping("/cache/stats")
-    public ResponseEntity<?> getSearchCacheStats(
-            @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) String userType) {
-        try {
-            // 权限验证 - 只有登录用户可以查看缓存统计
-            if (userId == null || userType == null) {
-                return ResponseEntity.status(401).body(Map.of("error", "用户未登录"));
-            }
-            
-            Map<String, Object> stats = databaseService.getSearchCacheStats();
-            return ResponseEntity.ok(stats);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "获取缓存统计失败: " + e.getMessage()));
-        }
-    }
 
     /**
      * 批量插入表数据
@@ -1844,5 +1481,75 @@ public class DatabaseController {
             // 忽略提取错误
         }
         return null;
+    }
+
+    /**
+     * 修改表结构
+     */
+    @PutMapping("/tables/modify")
+    public ResponseEntity<?> modifyTableStructure(@RequestBody Map<String, Object> request) {
+        try {
+            // 获取用户信息
+            Long userId = extractUserId(request);
+            String userType = (String) request.get("userType");
+            
+            // 验证用户权限
+            if (userId == null || userType == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "用户信息缺失"
+                ));
+            }
+            
+            // 获取请求参数
+            String dataSource = (String) request.get("dataSource");
+            String databaseName = (String) request.get("databaseName");
+            String tableName = (String) request.get("tableName");
+            String columnName = (String) request.get("columnName");
+            String newDataType = (String) request.get("newDataType");
+            String newLength = (String) request.get("newLength");
+            String newDecimals = (String) request.get("newDecimals");
+            
+            // 验证必要参数
+            if (dataSource == null || databaseName == null || tableName == null || 
+                columnName == null || newDataType == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "缺少必要参数"
+                ));
+            }
+            
+            // 检查权限
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "write");
+            if (permissionCheck != null) {
+                return ResponseEntity.status(permissionCheck.getStatusCode()).body(Map.of(
+                    "success", false,
+                    "error", "没有修改数据库的权限"
+                ));
+            }
+            
+            // 执行修改
+            boolean success = databaseService.modifyTableColumn(dataSource, databaseName, tableName, 
+                                                             columnName, newDataType, newLength, newDecimals);
+            
+            if (success) {
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "表结构修改成功"
+                ));
+            } else {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "表结构修改失败"
+                ));
+            }
+            
+        } catch (Exception e) {
+            // logger.error("修改表结构失败: {}", e.getMessage(), e); // Original code had this line commented out
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error", "修改表结构失败: " + e.getMessage()
+            ));
+        }
     }
 } 

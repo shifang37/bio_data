@@ -1112,6 +1112,10 @@ public class DatabaseService {
                     throw new RuntimeException("必填字段缺失：某些必填字段未填写或为空值。", e);
                 } else if (errorMessage.contains("Data too long")) {
                     throw new RuntimeException("数据长度超限：某些字段的数据长度超过了定义的最大长度。", e);
+                } else if (errorMessage.contains("Out of range value")) {
+                    throw new RuntimeException("数值超出范围：某些整数字段的值超出了定义的数据类型范围。建议使用BIGINT类型或检查数据。", e);
+                } else if (errorMessage.contains("Incorrect integer value")) {
+                    throw new RuntimeException("整数格式错误：某些字段包含非法的整数值。请检查数据格式。", e);
                 } else if (errorMessage.contains("foreign key constraint")) {
                     throw new RuntimeException("外键约束失败：引用的数据不存在，请确保相关联的记录已存在。", e);
                 } else if (errorMessage.contains("Incorrect") && errorMessage.contains("value")) {
@@ -2544,6 +2548,12 @@ public class DatabaseService {
                                 logger.error("数据类型或长度错误，请检查数据格式");
                             }
                             
+                            // 检查是否是整数范围错误
+                            if (errorDetail != null && (errorDetail.toLowerCase().contains("out of range value") ||
+                                                       errorDetail.toLowerCase().contains("incorrect integer value"))) {
+                                logger.error("整数范围错误：某些整数字段的值超出了定义的数据类型范围。建议使用BIGINT类型或检查数据。");
+                            }
+                            
                             // 检查是否是约束冲突
                             if (errorDetail != null && (errorDetail.toLowerCase().contains("duplicate") || 
                                                        errorDetail.toLowerCase().contains("constraint"))) {
@@ -3289,14 +3299,17 @@ public class DatabaseService {
                 // 清理列名，确保合法
                 columnName = sanitizeColumnName(columnName);
                 
+                // 优化数据类型，确保整数类型有足够的长度
+                String optimizedDataType = optimizeDataType(dataType, csvData, columnName);
+                
                 // 如果这是用户选择的主键列
                 if (columnName.equals(primaryKeyColumn)) {
                     // 移除AUTO_INCREMENT关键字，因为用户可能选择非自增主键
-                    String cleanDataType = dataType.replace("AUTO_INCREMENT", "").trim();
+                    String cleanDataType = optimizedDataType.replace("AUTO_INCREMENT", "").trim();
                     createTableSql.append("`").append(columnName).append("` ").append(cleanDataType).append(" PRIMARY KEY");
                 } else {
                     // 普通列，移除AUTO_INCREMENT关键字
-                    String cleanDataType = dataType.replace("AUTO_INCREMENT", "").trim();
+                    String cleanDataType = optimizedDataType.replace("AUTO_INCREMENT", "").trim();
                     createTableSql.append("`").append(columnName).append("` ").append(cleanDataType);
                 }
                 
@@ -3837,5 +3850,129 @@ public class DatabaseService {
      */
     public void findTablesByValueWithProgress(String dataSourceName, String searchValue, SseEmitter emitter) {
         findTablesByValueWithProgress(dataSourceName, searchValue, "auto", emitter);
+    }
+    
+    /**
+     * 优化数据类型，确保整数类型有足够的长度
+     */
+    private String optimizeDataType(String originalDataType, List<Map<String, Object>> csvData, String columnName) {
+        if (originalDataType == null) {
+            return "VARCHAR(255)";
+        }
+        
+        String upperDataType = originalDataType.toUpperCase();
+        
+        // 如果是整数类型，进行更详细的验证
+        if (upperDataType.contains("INT") && !upperDataType.contains("BIGINT")) {
+            // 检查所有数据，确保没有超出范围的值
+            long maxValue = Long.MIN_VALUE;
+            long minValue = Long.MAX_VALUE;
+            boolean hasValidNumbers = false;
+            
+            for (Map<String, Object> row : csvData) {
+                Object value = row.get(columnName);
+                if (value != null && !value.toString().trim().isEmpty()) {
+                    try {
+                        long numValue = Long.parseLong(value.toString().trim());
+                        maxValue = Math.max(maxValue, numValue);
+                        minValue = Math.min(minValue, numValue);
+                        hasValidNumbers = true;
+                    } catch (NumberFormatException e) {
+                        // 忽略非数字值
+                    }
+                }
+            }
+            
+            if (hasValidNumbers) {
+                // 根据实际数值范围选择最合适的数据类型
+                if (maxValue <= 127 && minValue >= -128) {
+                    return "TINYINT";
+                } else if (maxValue <= 32767 && minValue >= -32768) {
+                    return "SMALLINT";
+                } else if (maxValue <= 8388607 && minValue >= -8388608) {
+                    return "MEDIUMINT";
+                } else if (maxValue <= 2147483647L && minValue >= -2147483648L) {
+                    return "INT";
+                } else {
+                    // 如果超出INT范围，升级为BIGINT
+                    logger.warn("列 {} 的数值范围超出INT限制，自动升级为BIGINT。最大值: {}, 最小值: {}", 
+                               columnName, maxValue, minValue);
+                    return "BIGINT";
+                }
+            }
+        }
+        
+        // 对于其他类型，保持原样
+        return originalDataType;
+    }
+
+    /**
+     * 修改表结构 - 修改列的数据类型
+     */
+    public boolean modifyTableColumn(String dataSourceName, String databaseName, String tableName, 
+                                   String columnName, String newDataType, String newLength, String newDecimals) {
+        try {
+            if (!isValidTableName(tableName)) {
+                throw new IllegalArgumentException("表名不符合规范");
+            }
+            
+            if (!tableExists(dataSourceName, databaseName, tableName)) {
+                throw new IllegalArgumentException("表不存在");
+            }
+            
+            // 验证列是否存在
+            List<Map<String, Object>> columns = getTableColumns(dataSourceName, tableName);
+            boolean columnExists = columns.stream()
+                .anyMatch(col -> columnName.equalsIgnoreCase((String) col.get("COLUMN_NAME")));
+            
+            if (!columnExists) {
+                throw new IllegalArgumentException("列 '" + columnName + "' 不存在于表 '" + tableName + "' 中");
+            }
+            
+            JdbcTemplate jdbcTemplate;
+            String sql;
+            
+            // 构建ALTER TABLE语句
+            StringBuilder alterSql = new StringBuilder();
+            alterSql.append("ALTER TABLE ");
+            
+            if (isUserCreatedDatabase(databaseName)) {
+                alterSql.append("`").append(databaseName).append("`.`").append(tableName).append("` ");
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+            } else {
+                alterSql.append("`").append(tableName).append("` ");
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+            }
+            
+            alterSql.append("MODIFY COLUMN `").append(columnName).append("` ");
+            
+            // 构建新的数据类型
+            String fullDataType = newDataType.toUpperCase();
+            if (needsLength(newDataType)) {
+                fullDataType += "(";
+                if (newLength != null && !newLength.trim().isEmpty()) {
+                    fullDataType += newLength;
+                    if (needsDecimals(newDataType) && newDecimals != null && !newDecimals.trim().isEmpty()) {
+                        fullDataType += "," + newDecimals;
+                    }
+                }
+                fullDataType += ")";
+            }
+            
+            alterSql.append(fullDataType);
+            
+            logger.info("执行修改表结构SQL: {}", alterSql.toString());
+            
+            // 执行修改
+            jdbcTemplate.execute(alterSql.toString());
+            
+            logger.info("成功修改表结构: {}.{}.{} -> {}", databaseName, tableName, columnName, fullDataType);
+            return true;
+            
+        } catch (Exception e) {
+            logger.error("修改表结构失败 - 数据库: {}, 表: {}, 列: {}, 错误: {}", 
+                        databaseName, tableName, columnName, e.getMessage());
+            throw new RuntimeException("修改表结构失败: " + e.getMessage(), e);
+        }
     }
 } 
