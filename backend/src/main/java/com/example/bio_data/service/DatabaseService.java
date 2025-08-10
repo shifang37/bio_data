@@ -71,6 +71,30 @@ public class DatabaseService {
             return getJdbcTemplate(dataSourceName).queryForList(sql);
         }
     }
+    
+    /**
+     * 获取指定表的准确行数
+     */
+    public Integer getTableRowCount(String dataSourceName, String tableName) {
+        try {
+            JdbcTemplate jdbcTemplate;
+            String countSql;
+            
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+                countSql = String.format("SELECT COUNT(*) FROM `%s`.`%s`", dataSourceName, tableName);
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+                countSql = String.format("SELECT COUNT(*) FROM `%s`", tableName);
+            }
+            
+            Integer rowCount = jdbcTemplate.queryForObject(countSql, Integer.class);
+            return rowCount != null ? rowCount : 0;
+        } catch (Exception e) {
+            logger.warn("无法获取表 {} 的准确行数: {}", tableName, e.getMessage());
+            return 0;
+        }
+    }
 
     /**
      * 获取指定数据源中指定表的列信息
@@ -164,21 +188,30 @@ public class DatabaseService {
             // 获取分页数据
             List<Map<String, Object>> data = jdbcTemplate.queryForList(dataSql, offset, size);
             
-            // 获取总记录数
+            // 获取总记录数 - 总是使用准确的COUNT查询
             Integer totalCount;
             try {
-                if (isUserCreatedDatabase(dataSourceName)) {
-                    totalCount = jdbcTemplate.queryForObject(approxCountSql, Integer.class, dataSourceName, tableName);
-                } else {
-                    totalCount = jdbcTemplate.queryForObject(approxCountSql, Integer.class, tableName);
-                }
-                
-                if (totalCount == null || totalCount == 0) {
-                    totalCount = jdbcTemplate.queryForObject(countSql, Integer.class);
+                // 直接使用COUNT(*)查询获取准确的行数，而不是依赖information_schema的估算值
+                totalCount = jdbcTemplate.queryForObject(countSql, Integer.class);
+                if (totalCount == null) {
+                    totalCount = 0;
                 }
             } catch (Exception e) {
-                totalCount = (page * size) + (data.size() == size ? size : 0);
-                logger.warn("无法获取表 {} 的准确行数，使用估算值: {}", tableName, totalCount);
+                // 如果COUNT查询失败，尝试使用information_schema的估算值作为备选
+                try {
+                    if (isUserCreatedDatabase(dataSourceName)) {
+                        totalCount = jdbcTemplate.queryForObject(approxCountSql, Integer.class, dataSourceName, tableName);
+                    } else {
+                        totalCount = jdbcTemplate.queryForObject(approxCountSql, Integer.class, tableName);
+                    }
+                    
+                    if (totalCount == null || totalCount == 0) {
+                        totalCount = (page * size) + (data.size() == size ? size : 0);
+                    }
+                } catch (Exception fallbackException) {
+                    totalCount = (page * size) + (data.size() == size ? size : 0);
+                    logger.warn("无法获取表 {} 的行数，使用估算值: {}", tableName, totalCount);
+                }
             }
             
             // 计算总页数
@@ -191,7 +224,7 @@ public class DatabaseService {
             result.put("currentPage", page);
             result.put("pageSize", size);
             result.put("dataSource", dataSourceName);
-            result.put("isApproximate", true);
+            result.put("isApproximate", false); // 现在总是尝试获取准确的行数
             
             return result;
             
@@ -1099,7 +1132,12 @@ public class DatabaseService {
         }
         
         try {
-            return jdbcTemplate.update(sql, params.toArray());
+            int result = jdbcTemplate.update(sql, params.toArray());
+            
+            // 清除该表的搜索缓存，确保搜索结果反映最新数据
+            clearTableSearchCache(dataSourceName, tableName);
+            
+            return result;
         } catch (Exception e) {
             logger.error("插入数据失败 - 表: {}, SQL: {}, 错误: {}", tableName, sql, e.getMessage());
             
@@ -1161,7 +1199,12 @@ public class DatabaseService {
             jdbcTemplate = getJdbcTemplate(dataSourceName);
         }
         
-        return jdbcTemplate.update(sql, params.toArray());
+        int result = jdbcTemplate.update(sql, params.toArray());
+        
+        // 清除该表的搜索缓存，确保搜索结果反映最新数据
+        clearTableSearchCache(dataSourceName, tableName);
+        
+        return result;
     }
 
     /**
@@ -1214,7 +1257,12 @@ public class DatabaseService {
             jdbcTemplate = getJdbcTemplate(dataSourceName);
         }
         
-        return jdbcTemplate.update(sql, params.toArray());
+        int result = jdbcTemplate.update(sql, params.toArray());
+        
+        // 清除该表的搜索缓存，确保搜索结果反映最新数据
+        clearTableSearchCache(dataSourceName, tableName);
+        
+        return result;
     }
 
     // =============================================================================
@@ -2576,6 +2624,9 @@ public class DatabaseService {
             result.put("tableName", tableName);
             result.put("dataSource", dataSourceName);
             
+            // 清除该表的搜索缓存，确保搜索结果反映最新数据
+            clearTableSearchCache(dataSourceName, tableName);
+            
             logger.info("批量插入完成 - 表: {}, 总记录数: {}, 成功: {}, 失败: {}, 耗时: {}ms", 
                     tableName, totalRecords, successCount, failureCount, duration);
             
@@ -2681,6 +2732,9 @@ public class DatabaseService {
             result.put("errors", new ArrayList<>());
             result.put("tableName", tableName);
             result.put("dataSource", dataSourceName);
+            
+            // 清除该表的搜索缓存，确保搜索结果反映最新数据
+            clearTableSearchCache(dataSourceName, tableName);
             
             logger.info("事务性批量插入完成 - 表: {}, 总记录数: {}, 成功: {}, 耗时: {}ms", 
                     tableName, totalRecords, successCount, duration);

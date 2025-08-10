@@ -1130,7 +1130,7 @@
             </h4>
             <div class="dialog-controls">
               <el-button 
-                type="info" 
+                class="minimize-btn"
                 size="small" 
                 @click="minimizeDialog(dialog.id)"
                 title="最小化"
@@ -1291,10 +1291,11 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, onActivated, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Search, Coin, Folder, FolderOpened, Refresh, Plus, Minus, Loading } from '@element-plus/icons-vue'
 import api, { userState, checkPermission, databaseApi } from '../utils/api'
+import { useRoute } from 'vue-router'
 
 export default {
   name: 'Tables',
@@ -1311,6 +1312,7 @@ export default {
     Loading
   },
   setup() {
+    const route = useRoute()
     const tableList = ref([])
     const selectedTable = ref('')
     const structureDialogVisible = ref(false)
@@ -1386,6 +1388,11 @@ export default {
       columns: []
     })
     const generatedSQL = ref('')
+    
+    // 数据更新检测相关
+    const lastDataUpdateTime = ref(null)
+    const shouldRefreshOnActivate = ref(false)
+    const updatedTables = ref(new Set()) // 记录哪些表被更新了
     
     // 外键相关变量
     const availableTables = ref([])
@@ -1499,6 +1506,66 @@ export default {
         }
       }
       return { allowed: true }
+    }
+    
+    // 检查数据更新
+    const checkDataUpdate = () => {
+      try {
+        const storedUpdateTime = localStorage.getItem('lastDataUpdateTime')
+        if (storedUpdateTime) {
+          const storedTime = new Date(storedUpdateTime).getTime()
+          const currentTime = new Date().getTime()
+          
+          // 如果存储的更新时间比当前组件的最后更新时间新，则需要刷新
+          if (!lastDataUpdateTime.value || storedTime > lastDataUpdateTime.value) {
+            lastDataUpdateTime.value = storedTime
+            return true
+          }
+        }
+        return false
+      } catch (error) {
+        console.error('检查数据更新失败:', error)
+        return false
+      }
+    }
+    
+    // 标记数据已更新
+    const markDataUpdated = () => {
+      try {
+        const currentTime = new Date().toISOString()
+        localStorage.setItem('lastDataUpdateTime', currentTime)
+        lastDataUpdateTime.value = new Date(currentTime).getTime()
+      } catch (error) {
+        console.error('标记数据更新失败:', error)
+      }
+    }
+    
+    // 标记特定表已更新
+    const markTableUpdated = (tableName) => {
+      updatedTables.value.add(tableName)
+    }
+    
+    // 更新特定表的行数
+    const updateTableRowCount = async (tableName) => {
+      try {
+        const userInfo = userState.getUserInfo()
+        const response = await databaseApi.getTableRowCount(
+          tableName, 
+          selectedDatabase.value, 
+          userInfo.userId, 
+          userInfo.userType
+        )
+        
+        if (response.data && response.data.rowCount !== undefined) {
+          // 更新表列表中的行数
+          const tableIndex = tableList.value.findIndex(table => table.TABLE_NAME === tableName)
+          if (tableIndex !== -1) {
+            tableList.value[tableIndex].TABLE_ROWS = response.data.rowCount
+          }
+        }
+      } catch (error) {
+        console.error(`更新表 ${tableName} 行数失败:`, error)
+      }
     }
     
     // 更新权限状态
@@ -2204,6 +2271,12 @@ export default {
         if (response.data.success) {
           ElMessage.success(response.data.message)
           addDataDialogVisible.value = false
+          // 标记数据已更新
+          markDataUpdated()
+          // 标记当前表已更新
+          markTableUpdated(selectedTable.value)
+          // 更新当前表的行数
+          await updateTableRowCount(selectedTable.value)
           // 刷新表数据
           await loadTableDataWithPagination()
         } else {
@@ -2345,6 +2418,12 @@ export default {
         
         if (response.data.success) {
           ElMessage.success(response.data.message)
+          // 标记数据已更新
+          markDataUpdated()
+          // 标记当前表已更新
+          markTableUpdated(selectedTable.value)
+          // 更新当前表的行数
+          await updateTableRowCount(selectedTable.value)
           // 刷新表数据
           await loadTableDataWithPagination()
         } else {
@@ -2422,6 +2501,12 @@ export default {
         if (response.data.success) {
           ElMessage.success(response.data.message)
           editDataDialogVisible.value = false
+          // 标记数据已更新
+          markDataUpdated()
+          // 标记当前表已更新
+          markTableUpdated(selectedTable.value)
+          // 更新当前表的行数
+          await updateTableRowCount(selectedTable.value)
           // 刷新表数据
           await loadTableDataWithPagination()
         } else {
@@ -3539,6 +3624,50 @@ export default {
         }
       })
       
+      // 监听路由变化，当从其他页面返回时检查数据更新
+      watch(() => route.path, (newPath, oldPath) => {
+        // 当路由切换到当前页面时，检查是否需要刷新数据
+        if (newPath === '/tables' && oldPath && oldPath !== '/tables') {
+          if (checkDataUpdate()) {
+            console.log('检测到数据更新，自动刷新表列表')
+            
+            // 检查是否有特定表需要更新行数
+            try {
+              const updatedTables = JSON.parse(localStorage.getItem('updatedTables') || '[]')
+              if (updatedTables.length > 0) {
+                console.log('检测到特定表更新，只更新这些表的行数:', updatedTables)
+                
+                // 只更新特定表的行数，而不是重新加载整个表列表
+                updatedTables.forEach(tableName => {
+                  updateTableRowCount(tableName)
+                })
+                
+                // 清空已更新的表列表
+                localStorage.removeItem('updatedTables')
+              } else {
+                // 没有特定表更新，重新加载整个表列表
+                loadTables(false)
+                loadDatabaseInfo()
+              }
+            } catch (error) {
+              console.error('检查特定表更新失败:', error)
+              // 出错时回退到重新加载整个表列表
+              loadTables(false)
+              loadDatabaseInfo()
+            }
+          }
+        }
+      })
+      
+      onActivated(() => {
+        // 当组件被激活时（从其他页面返回），检查是否需要刷新数据
+        if (checkDataUpdate()) {
+          console.log('检测到数据更新，自动刷新表列表')
+          loadTables(false)
+          loadDatabaseInfo()
+        }
+      })
+      
       onUnmounted(() => {
         // 清理事件监听器
         window.removeEventListener('resize', updateTableHeight)
@@ -3662,6 +3791,11 @@ export default {
       permissionMessage,
       checkDatabasePermission,
       updatePermissionState,
+      // 数据更新检测相关
+      checkDataUpdate,
+      markDataUpdated,
+      markTableUpdated,
+      updateTableRowCount,
       // 删除表相关
       confirmDeleteTable,
       deleteTable,
@@ -4212,6 +4346,34 @@ export default {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.minimize-btn {
+  color: #606266 !important;
+  transition: color 0.2s ease;
+  border: none !important;
+  background: transparent !important;
+  padding: 4px 5px 15px 10px !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.minimize-btn:hover {
+  color: #409eff !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.minimize-btn:focus {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.minimize-btn .el-icon {
+  font-size: 16px;
 }
 
 .search-progress-content {

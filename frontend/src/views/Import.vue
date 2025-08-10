@@ -247,7 +247,23 @@ export default {
       
       saveImportHistory()
       
+      // 标记数据已更新，通知其他页面刷新
       if (result.successCount > 0) {
+        try {
+          const currentTime = new Date().toISOString()
+          localStorage.setItem('lastDataUpdateTime', currentTime)
+          
+          // 标记特定表已更新（用于Tables.vue的智能更新）
+          if (result.tableName) {
+            const updatedTables = JSON.parse(localStorage.getItem('updatedTables') || '[]')
+            if (!updatedTables.includes(result.tableName)) {
+              updatedTables.push(result.tableName)
+              localStorage.setItem('updatedTables', JSON.stringify(updatedTables))
+            }
+          }
+        } catch (error) {
+          console.error('标记数据更新失败:', error)
+        }
         ElMessage.success('导入记录已保存到历史记录')
       } else {
         ElMessage.warning('导入记录已保存到历史记录（存在错误）')

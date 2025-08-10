@@ -218,6 +218,38 @@ public class DatabaseController {
             return ResponseEntity.status(500).body(null);
         }
     }
+    
+    /**
+     * 获取指定表的准确行数
+     */
+    @GetMapping("/tables/{tableName}/row-count")
+    public ResponseEntity<Map<String, Object>> getTableRowCount(
+            @PathVariable String tableName,
+            @RequestParam(required = false) String dataSource,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String userType) {
+        try {
+            // 权限验证
+            if (userId != null && userType != null) {
+                ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+                if (permissionCheck != null) {
+                    return ResponseEntity.status(403).body(Map.of("error", "权限不足"));
+                }
+            }
+            
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "chembl33";
+            Integer rowCount = databaseService.getTableRowCount(actualDataSource, tableName);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("tableName", tableName);
+            result.put("rowCount", rowCount);
+            result.put("dataSource", actualDataSource);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "获取表行数失败: " + e.getMessage()));
+        }
+    }
 
     /**
      * 获取表数据

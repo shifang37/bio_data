@@ -50,7 +50,11 @@
           </template>
           <el-table :data="tableList" style="width: 100%" max-height="300">
             <el-table-column prop="TABLE_NAME" label="表名" width="200" />
-            <el-table-column prop="TABLE_ROWS" label="行数" width="80" />
+            <el-table-column prop="TABLE_ROWS" label="行数" width="80">
+              <template #default="scope">
+                {{ scope.row.TABLE_ROWS?.toLocaleString() || 'N/A' }}
+              </template>
+            </el-table-column>
             <el-table-column prop="DATA_LENGTH" label="大小(字节)" width="100" />
           </el-table>
         </el-card>
@@ -60,10 +64,11 @@
 </template>
 
 <script>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
 import api from '../utils/api'
 import DatabaseConnection from '../components/DatabaseConnection.vue'
+import { useRoute } from 'vue-router'
 
 export default {
   name: 'Dashboard',
@@ -71,9 +76,13 @@ export default {
     DatabaseConnection
   },
   setup() {
+    const route = useRoute()
     const dbStats = ref({})
     const tableList = ref([])
     const tableSizeChart = ref(null)
+    
+    // 数据更新检测相关
+    const lastDataUpdateTime = ref(null)
 
     const loadDashboardData = async () => {
       try {
@@ -136,8 +145,40 @@ export default {
       chart.setOption(option)
     }
 
+    // 检查数据更新
+    const checkDataUpdate = () => {
+      try {
+        const storedUpdateTime = localStorage.getItem('lastDataUpdateTime')
+        if (storedUpdateTime) {
+          const storedTime = new Date(storedUpdateTime).getTime()
+          const currentTime = new Date().getTime()
+          
+          // 如果存储的更新时间比当前组件的最后更新时间新，则需要刷新
+          if (!lastDataUpdateTime.value || storedTime > lastDataUpdateTime.value) {
+            lastDataUpdateTime.value = storedTime
+            return true
+          }
+        }
+        return false
+      } catch (error) {
+        console.error('检查数据更新失败:', error)
+        return false
+      }
+    }
+
     onMounted(() => {
       loadDashboardData()
+    })
+    
+    // 监听路由变化，当从其他页面返回时检查数据更新
+    watch(() => route.path, (newPath, oldPath) => {
+      // 当路由切换到当前页面时，检查是否需要刷新数据
+      if (newPath === '/dashboard' && oldPath && oldPath !== '/dashboard') {
+        if (checkDataUpdate()) {
+          console.log('检测到数据更新，自动刷新仪表板数据')
+          loadDashboardData()
+        }
+      }
     })
 
     return {

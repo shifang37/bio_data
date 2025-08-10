@@ -266,6 +266,13 @@ export const databaseApi = {
     })
   },
 
+  // 获取指定表的准确行数
+  getTableRowCount(tableName, dataSource, userId, userType) {
+    return api.get(`/api/database/tables/${tableName}/row-count`, {
+      params: { dataSource, userId, userType }
+    })
+  },
+
   // 获取表数据
   getTableData(tableName, dataSource, userId, userType, limit = 100) {
     return api.get(`/api/database/tables/${tableName}/data`, {
