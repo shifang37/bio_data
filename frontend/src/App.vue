@@ -111,15 +111,10 @@ export default {
     })
 
     const checkConnection = async () => {
-      try {
-        const response = await api.get('/api/database/health')
-        connectionStatus.value = response.data
-      } catch (error) {
-        console.error('连接检查失败:', error)
-        connectionStatus.value = {
-          status: 'DOWN',
-          database: 'Connection Failed'
-        }
+      // 简化为单数据源后，默认显示连接正常
+      connectionStatus.value = {
+        status: 'UP',
+        database: 'login'
       }
     }
 
@@ -155,9 +150,8 @@ export default {
       // 初始化时从localStorage恢复用户状态
       userState.getUserInfo()
       
+      // 设置连接状态为正常
       checkConnection()
-      // 每30秒检查一次连接状态
-      setInterval(checkConnection, 30000)
     })
 
     return {

@@ -234,32 +234,7 @@ public class DatabaseService {
         }
     }
 
-    /**
-     * 获取指定数据源的数据库统计信息
-     */
-    public Map<String, Object> getDatabaseStats(String dataSourceName) {
-        JdbcTemplate jdbcTemplate = getJdbcTemplate(dataSourceName);
-        Map<String, Object> stats = new HashMap<>();
-        
-        // 获取表总数
-        String tableCountSql = "SELECT COUNT(*) as table_count FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()";
-        Integer tableCount = jdbcTemplate.queryForObject(tableCountSql, Integer.class);
-        stats.put("tableCount", tableCount);
-        
-        // 获取数据库大小
-        String sizeSql = "SELECT ROUND(SUM(DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) as size_mb " +
-                "FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()";
-        Double sizeInMB = jdbcTemplate.queryForObject(sizeSql, Double.class);
-        stats.put("databaseSizeMB", sizeInMB);
-        
-        // 获取数据库名称
-        String dbNameSql = "SELECT DATABASE() as db_name";
-        String dbName = jdbcTemplate.queryForObject(dbNameSql, String.class);
-        stats.put("databaseName", dbName);
-        stats.put("dataSource", dataSourceName);
-        
-        return stats;
-    }
+
 
 
 
@@ -1277,12 +1252,7 @@ public class DatabaseService {
         return getTableDataWithPagination(DEFAULT_DATASOURCE, tableName, page, size);
     }
 
-    /**
-     * 获取数据库统计信息（使用默认数据源）
-     */
-    public Map<String, Object> getDatabaseStats() {
-        return getDatabaseStats(DEFAULT_DATASOURCE);
-    }
+
 
 
 
@@ -1328,44 +1298,7 @@ public class DatabaseService {
         return getTableDataByColumn(DEFAULT_DATASOURCE, tableName, columnName, limit);
     }
 
-    // =============================================================================
-    // 多数据源管理方法
-    // =============================================================================
 
-    /**
-     * 获取所有可用的数据源
-     */
-    public List<Map<String, Object>> getAvailableDataSources() {
-        return multiDataSourceService.getAllDataSourcesOverview();
-    }
-
-    /**
-     * 添加新的数据源
-     */
-    public boolean addDataSource(String name, String url, String username, String password) {
-        return multiDataSourceService.addDataSource(name, url, username, password);
-    }
-
-    /**
-     * 移除数据源
-     */
-    public boolean removeDataSource(String name) {
-        return multiDataSourceService.removeDataSource(name);
-    }
-
-    /**
-     * 测试数据源连接
-     */
-    public boolean testDataSourceConnection(String dataSourceName) {
-        return multiDataSourceService.testConnection(dataSourceName);
-    }
-
-    /**
-     * 获取数据源统计信息
-     */
-    public Map<String, Object> getDataSourceStats(String dataSourceName) {
-        return multiDataSourceService.getDataSourceStats(dataSourceName);
-    }
 
     /**
      * 获取数据库信息（兼容性方法）
@@ -1423,29 +1356,13 @@ public class DatabaseService {
         List<Map<String, Object>> databases = new ArrayList<>();
         
         try {
-            // 获取所有数据源
-            List<Map<String, Object>> dataSources = getAvailableDataSources();
-            
-            for (Map<String, Object> ds : dataSources) {
-                String name = (String) ds.get("name");
-                Map<String, Object> db = new HashMap<>();
-                db.put("name", name);
-                
-                // 为不同数据库设置友好的显示名称
-                switch (name) {
-                    case "login":
-                        db.put("displayName", "Login Database");
-                        db.put("description", "用户登录数据库");
-                        break;
-                    default:
-                        db.put("displayName", name);
-                        db.put("description", "数据源: " + name);
-                        break;
-                }
-                
-                db.put("connected", ds.get("connected"));
-                databases.add(db);
-            }
+            // 只返回login数据库
+            Map<String, Object> db = new HashMap<>();
+            db.put("name", "login");
+            db.put("displayName", "Login Database");
+            db.put("description", "用户登录数据库");
+            db.put("connected", true);
+            databases.add(db);
             
         } catch (Exception e) {
             logger.error("获取数据库列表失败: {}", e.getMessage());

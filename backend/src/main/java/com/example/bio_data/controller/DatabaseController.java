@@ -79,22 +79,7 @@ public class DatabaseController {
         return null; // 权限验证通过
     }
 
-    // =============================================================================
-    // 数据源管理相关接口
-    // =============================================================================
 
-    /**
-     * 获取所有可用数据源
-     */
-    @GetMapping("/datasources")
-    public ResponseEntity<?> getAvailableDataSources() {
-        try {
-            List<Map<String, Object>> dataSources = databaseService.getAvailableDataSources();
-            return ResponseEntity.ok(dataSources);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "获取数据源列表失败: " + e.getMessage()));
-        }
-    }
 
     /**
      * 获取所有可用数据库（用于CSV导入等功能）
@@ -142,27 +127,8 @@ public class DatabaseController {
 
 
     // =============================================================================
-    // 数据库操作相关接口（支持多数据源）
+    // 数据库操作相关接口
     // =============================================================================
-
-    /**
-     * 获取数据库统计信息
-     */
-    @GetMapping("/stats")
-    public ResponseEntity<Map<String, Object>> getDatabaseStats(
-            @RequestParam(required = false) String dataSource) {
-        try {
-            Map<String, Object> stats;
-            if (dataSource != null && !dataSource.trim().isEmpty()) {
-                stats = databaseService.getDatabaseStats(dataSource);
-            } else {
-                stats = databaseService.getDatabaseStats();
-            }
-            return ResponseEntity.ok(stats);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "获取数据库统计信息失败: " + e.getMessage()));
-        }
-    }
 
     /**
      * 获取所有表信息
@@ -784,39 +750,7 @@ public class DatabaseController {
         }
     }
 
-    /**
-     * 健康检查
-     */
-    @GetMapping("/health")
-    public ResponseEntity<Map<String, Object>> healthCheck(@RequestParam(required = false) String dataSource) {
-        try {
-            if (dataSource != null && !dataSource.trim().isEmpty()) {
-                databaseService.getDatabaseStats(dataSource);
-                return ResponseEntity.ok(Map.of(
-                    "status", "UP",
-                    "database", "Connected",
-                    "dataSource", dataSource,
-                    "timestamp", System.currentTimeMillis()
-                ));
-            } else {
-                databaseService.getDatabaseStats();
-                return ResponseEntity.ok(Map.of(
-                    "status", "UP",
-                    "database", "Connected",
-                    "dataSource", "default",
-                    "timestamp", System.currentTimeMillis()
-                ));
-            }
-        } catch (Exception e) {
-            return ResponseEntity.status(503).body(Map.of(
-                "status", "DOWN",
-                "database", "Disconnected",
-                "error", e.getMessage(),
-                "dataSource", dataSource != null ? dataSource : "default",
-                "timestamp", System.currentTimeMillis()
-            ));
-        }
-    }
+
     
     // =============================================================================
     // 表管理相关接口

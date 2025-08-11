@@ -1098,7 +1098,7 @@
         <div class="minimized-content">
           <el-icon><Search /></el-icon>
           <span class="search-value">{{ dialog.searchValue }}</span>
-          <span class="database-info">[{{ dialog.result.dataSource || '未知' }}]</span>
+          <span class="search-result-database-info">[{{ dialog.result.dataSource || '未知' }}]</span>
           <span class="match-count">{{ dialog.result.totalCount }}</span>
         </div>
         <el-button 
@@ -4301,7 +4301,7 @@ export default {
   max-width: 100px;
 }
 
-.database-info {
+.search-result-database-info {
   font-size: 11px;
   color: #909399;
   background-color: #f4f4f5;
