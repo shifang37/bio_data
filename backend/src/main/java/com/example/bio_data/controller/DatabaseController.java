@@ -316,59 +316,7 @@ public class DatabaseController {
 
 
 
-    /**
-     * 执行自定义SQL查询
-     */
-    @PostMapping("/query")
-    public ResponseEntity<?> executeQuery(@RequestBody Map<String, Object> request) {
-        try {
-            String sql = (String) request.get("sql");
-            Object limitObj = request.get("limit");
-            int limit = 100;
-            if (limitObj != null) {
-                if (limitObj instanceof Number) {
-                    limit = ((Number) limitObj).intValue();
-                } else {
-                    limit = Integer.parseInt(limitObj.toString());
-                }
-            }
-            String dataSource = (String) request.get("dataSource");
-            Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
-            
-            if (sql == null || sql.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "SQL语句不能为空"));
-            }
-            
-            // 权限验证
-            if (userId == null) {
-                return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
-            }
-            
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
-            if (permissionCheck != null) {
-                return permissionCheck;
-            }
-            
-            if (limit > 1000) limit = 1000; // 限制最大返回行数
-            
-            List<Map<String, Object>> result;
-            if (dataSource != null && !dataSource.trim().isEmpty()) {
-                result = databaseService.executeQuery(dataSource, sql, limit);
-            } else {
-                result = databaseService.executeQuery(sql, limit);
-            }
-            
-            return ResponseEntity.ok(Map.of(
-                "data", result,
-                "count", result.size(),
-                "sql", sql,
-                "dataSource", dataSource != null ? dataSource : "default"
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "查询执行失败: " + e.getMessage()));
-        }
-    }
+
 
 
 

@@ -325,7 +325,7 @@ export default {
 
           // 延迟跳转到主页面
           setTimeout(() => {
-            this.$router.push('/dashboard')
+            this.$router.push('/tables')
           }, 1500)
         } else {
           this.error = response.data.message

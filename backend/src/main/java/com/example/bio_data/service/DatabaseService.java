@@ -261,27 +261,7 @@ public class DatabaseService {
         return stats;
     }
 
-    /**
-     * 在指定数据源中执行自定义SQL查询
-     */
-    public List<Map<String, Object>> executeQuery(String dataSourceName, String sql, int limit) {
-        // 为安全起见，只允许SELECT查询
-        if (!sql.trim().toUpperCase().startsWith("SELECT")) {
-            throw new IllegalArgumentException("只允许SELECT查询");
-        }
-        
-        // 添加LIMIT限制
-        String limitedSql = sql + " LIMIT " + limit;
-        
-        // 检查是否为用户创建的数据库
-        if (isUserCreatedDatabase(dataSourceName)) {
-            // 用户创建的数据库，使用默认数据源连接
-            return getJdbcTemplate(DEFAULT_DATASOURCE).queryForList(limitedSql);
-        } else {
-            // 配置的数据源，使用原来的逻辑
-            return getJdbcTemplate(dataSourceName).queryForList(limitedSql);
-        }
-    }
+
 
     /**
      * 根据字段名搜索包含该字段的表
@@ -1304,12 +1284,7 @@ public class DatabaseService {
         return getDatabaseStats(DEFAULT_DATASOURCE);
     }
 
-    /**
-     * 执行自定义SQL查询（使用默认数据源）
-     */
-    public List<Map<String, Object>> executeQuery(String sql, int limit) {
-        return executeQuery(DEFAULT_DATASOURCE, sql, limit);
-    }
+
 
     /**
      * 获取表的索引信息（使用默认数据源）

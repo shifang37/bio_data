@@ -47,18 +47,12 @@
             router
             style="border-right: none; height: 100%;"
           >
-            <el-menu-item index="/dashboard">
-              <el-icon><DataBoard /></el-icon>
-              <span>仪表板</span>
-            </el-menu-item>
+
             <el-menu-item index="/tables">
               <el-icon><Grid /></el-icon>
               <span>数据库管理</span>
             </el-menu-item>
-            <el-menu-item index="/query">
-              <el-icon><Search /></el-icon>
-              <span>SQL查询</span>
-            </el-menu-item>
+
             <el-menu-item index="/import">
               <el-icon><Upload /></el-icon>
               <span>数据导入</span>
@@ -81,16 +75,14 @@
 <script>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { DataBoard, Grid, Search, SwitchButton, Upload, Share } from '@element-plus/icons-vue'
+import { Grid, SwitchButton, Upload, Share } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { userState } from './utils/api'
 
 export default {
   name: 'App',
   components: {
-    DataBoard,
     Grid,  
-    Search,
     SwitchButton,
     Upload,
     Share
