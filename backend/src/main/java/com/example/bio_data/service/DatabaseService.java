@@ -23,7 +23,7 @@ public class DatabaseService {
     private SearchCacheService searchCacheService;
 
     // 默认数据源名称
-    private static final String DEFAULT_DATASOURCE = "chembl33";
+    private static final String DEFAULT_DATASOURCE = "login";
 
     /**
      * 获取JdbcTemplate，如果数据源名称为空则使用默认数据源
@@ -1373,7 +1373,7 @@ public class DatabaseService {
     public Map<String, Object> getDatabaseInfo(String database) {
         // 始终使用默认数据源连接，但查询指定的数据库信息
         String dataSourceName = DEFAULT_DATASOURCE;
-        String targetDatabase = database != null ? database : "chembl33";
+        String targetDatabase = database != null ? database : "login";
         
         Map<String, Object> info = new HashMap<>();
         
@@ -1381,7 +1381,7 @@ public class DatabaseService {
             JdbcTemplate jdbcTemplate = getJdbcTemplate(dataSourceName);
             
             // 如果传入的是数据库名，需要检查该数据库是否存在
-            if (database != null && !database.equals("chembl33") && !database.equals("tcrd6124expr2")) {
+            if (database != null && !database.equals("login")) {
                 // 检查用户创建的数据库是否存在
                 if (!databaseExists(dataSourceName, database)) {
                     throw new IllegalArgumentException("数据库不存在: " + database);
@@ -1433,13 +1433,9 @@ public class DatabaseService {
                 
                 // 为不同数据库设置友好的显示名称
                 switch (name) {
-                    case "chembl33":
-                        db.put("displayName", "ChEMBL 33");
-                        db.put("description", "ChEMBL化学生物学数据库");
-                        break;
-                    case "tcrd6124expr2":
-                        db.put("displayName", "TCRD 6.12.4");
-                        db.put("description", "目标中心研究数据库");
+                    case "login":
+                        db.put("displayName", "Login Database");
+                        db.put("description", "用户登录数据库");
                         break;
                     default:
                         db.put("displayName", name);
@@ -1584,8 +1580,6 @@ public class DatabaseService {
             "mysql", 
             "performance_schema", 
             "sys",
-            "chembl33",
-            "tcrd6124expr2",
             "login"
         );
         return systemDatabases.contains(databaseName.toLowerCase());
@@ -1630,10 +1624,6 @@ public class DatabaseService {
      */
     private String getDatabaseDisplayName(String databaseName) {
         switch (databaseName.toLowerCase()) {
-            case "chembl33":
-                return "ChEMBL 33";
-            case "tcrd6124expr2":
-                return "TCRD 6.12.4";
             case "login":
                 return "Login Database";
             default:
@@ -1646,10 +1636,6 @@ public class DatabaseService {
      */
     private String getDatabaseDescription(String databaseName) {
         switch (databaseName.toLowerCase()) {
-            case "chembl33":
-                return "ChEMBL化学生物学数据库";
-            case "tcrd6124expr2":
-                return "目标中心研究数据库";
             case "login":
                 return "用户登录数据库（仅管理员）";
             default:
@@ -1666,8 +1652,6 @@ public class DatabaseService {
      */
     public boolean isUserCreatedDatabase(String databaseName) {
         Set<String> systemDatabases = Set.of(
-            "chembl33", 
-            "tcrd6124expr2", 
             "login",
             "information_schema", 
             "mysql", 

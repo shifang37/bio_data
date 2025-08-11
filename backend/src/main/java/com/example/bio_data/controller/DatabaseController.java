@@ -65,7 +65,7 @@ public class DatabaseController {
             databaseName = "default"; // 默认数据库
         }
         // 如果dataSource直接是"login"，则使用"login"作为数据库名称
-        // 其他数据源（如chembl33等）不是login数据库，使用"default"
+        // 其他数据源使用"default"
         if (!"login".equals(databaseName)) {
             databaseName = "default";
         }
@@ -110,7 +110,7 @@ public class DatabaseController {
             }
             
             // 获取所有数据库（包括用户创建的）
-            List<Map<String, Object>> databases = databaseService.getAllDatabases("chembl33");
+            List<Map<String, Object>> databases = databaseService.getAllDatabases("login");
             
             // 过滤掉系统数据库，只保留可用于导入的数据库
             List<Map<String, Object>> availableDatabases = new ArrayList<>();
@@ -237,7 +237,7 @@ public class DatabaseController {
                 }
             }
             
-            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "chembl33";
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
             Integer rowCount = databaseService.getTableRowCount(actualDataSource, tableName);
             
             Map<String, Object> result = new HashMap<>();
@@ -669,7 +669,7 @@ public class DatabaseController {
             }
             
             // 使用默认数据源连接创建数据库
-            String dataSourceName = "chembl33"; // 使用默认连接
+            String dataSourceName = "login"; // 使用默认连接
             
             boolean success = databaseService.createDatabase(dataSourceName, databaseName, charset, collation);
             
@@ -730,7 +730,7 @@ public class DatabaseController {
             
             // 使用默认数据源如果未指定
             if (dataSourceName == null || dataSourceName.trim().isEmpty()) {
-                dataSourceName = "chembl33";
+                dataSourceName = "login";
             }
             
             boolean success = databaseService.dropDatabase(dataSourceName, databaseName);
@@ -773,7 +773,7 @@ public class DatabaseController {
             
             // 使用默认数据源如果未指定
             if (dataSource == null || dataSource.trim().isEmpty()) {
-                dataSource = "chembl33";
+                dataSource = "login";
             }
             
             List<Map<String, Object>> databases = databaseService.getAllDatabases(dataSource);
@@ -864,7 +864,7 @@ public class DatabaseController {
             
             // 使用默认数据源如果未指定
             if (dataSourceName == null || dataSourceName.trim().isEmpty()) {
-                dataSourceName = "chembl33";
+                dataSourceName = "login";
             }
             
             boolean success = databaseService.createTable(dataSourceName, databaseName, tableName, columns, tableComment);
@@ -920,7 +920,7 @@ public class DatabaseController {
             
             // 使用默认数据源如果未指定
             if (dataSourceName == null || dataSourceName.trim().isEmpty()) {
-                dataSourceName = "chembl33";
+                dataSourceName = "login";
             }
             
             boolean success = databaseService.dropTable(dataSourceName, databaseName, tableName);
@@ -1006,7 +1006,7 @@ public class DatabaseController {
             }
             
             Map<String, Object> result;
-            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "chembl33";
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
             
             if (useTransaction != null && useTransaction) {
                 // 使用事务性批量插入
@@ -1084,7 +1084,7 @@ public class DatabaseController {
                 importStrategy = "append";
             }
             
-            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "chembl33";
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
             
             Map<String, Object> result;
             if (useTransaction != null && useTransaction) {
@@ -1145,7 +1145,7 @@ public class DatabaseController {
             if (dataSource != null && !dataSource.trim().isEmpty()) {
                 result = databaseService.validateCsvData(dataSource, tableName, dataList);
             } else {
-                result = databaseService.validateCsvData("chembl33", tableName, dataList);
+                result = databaseService.validateCsvData("login", tableName, dataList);
             }
             
             return ResponseEntity.ok(Map.of(
@@ -1181,7 +1181,7 @@ public class DatabaseController {
             if (dataSource != null && !dataSource.trim().isEmpty()) {
                 columns = databaseService.getTableColumns(dataSource, tableName);
             } else {
-                columns = databaseService.getTableColumns("chembl33", tableName);
+                columns = databaseService.getTableColumns("login", tableName);
             }
             
             // 处理列信息，添加更多有用的信息
@@ -1207,7 +1207,7 @@ public class DatabaseController {
                 "success", true,
                 "columns", processedColumns,
                 "tableName", tableName,
-                "dataSource", dataSource != null ? dataSource : "chembl33"
+                "dataSource", dataSource != null ? dataSource : "login"
             ));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of(
@@ -1232,7 +1232,7 @@ public class DatabaseController {
                 return ResponseEntity.status(401).body(Map.of("error", "用户未登录"));
             }
             
-            String actualDataSource = (dataSource == null || dataSource.trim().isEmpty()) ? "chembl33" : dataSource;
+            String actualDataSource = (dataSource == null || dataSource.trim().isEmpty()) ? "login" : dataSource;
             
             Map<String, Object> diagnosis = new HashMap<>();
             diagnosis.put("dataSource", actualDataSource);
@@ -1319,7 +1319,7 @@ public class DatabaseController {
      */
     private boolean checkDatabaseExists(String databaseName) {
         try {
-            JdbcTemplate jdbcTemplate = databaseService.getJdbcTemplate("chembl33");
+            JdbcTemplate jdbcTemplate = databaseService.getJdbcTemplate("login");
             String sql = "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?";
             Integer count = jdbcTemplate.queryForObject(sql, Integer.class, databaseName);
             return count != null && count > 0;
@@ -1333,7 +1333,7 @@ public class DatabaseController {
      */
     private boolean checkTableExists(String databaseName, String tableName) {
         try {
-            JdbcTemplate jdbcTemplate = databaseService.getJdbcTemplate("chembl33");
+            JdbcTemplate jdbcTemplate = databaseService.getJdbcTemplate("login");
             String sql = "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
             Integer count = jdbcTemplate.queryForObject(sql, Integer.class, databaseName, tableName);
             return count != null && count > 0;

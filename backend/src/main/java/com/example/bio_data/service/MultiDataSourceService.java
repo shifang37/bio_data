@@ -2,7 +2,6 @@ package com.example.bio_data.service;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-//import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -24,25 +23,16 @@ public class MultiDataSourceService {
     // 存储所有JdbcTemplate
     private final Map<String, JdbcTemplate> jdbcTemplateMap = new ConcurrentHashMap<>();
 
-    //@Autowired
-    public MultiDataSourceService(@Qualifier("primaryDataSource") DataSource primaryDataSource,
-                                  @Qualifier("secondaryDataSource") DataSource secondaryDataSource,
-                                  @Qualifier("loginDataSource") DataSource loginDataSource,
-                                  @Qualifier("primaryJdbcTemplate") JdbcTemplate primaryJdbcTemplate,
-                                  @Qualifier("secondaryJdbcTemplate") JdbcTemplate secondaryJdbcTemplate,
+    public MultiDataSourceService(@Qualifier("loginDataSource") DataSource loginDataSource,
                                   @Qualifier("loginJdbcTemplate") JdbcTemplate loginJdbcTemplate) {
         
-        // 初始化数据源映射 - 只保留实际数据库名称
-        dataSourceMap.put("chembl33", primaryDataSource);
-        dataSourceMap.put("tcrd6124expr2", secondaryDataSource);
+        // 初始化数据源映射 - 只保留login数据源
         dataSourceMap.put("login", loginDataSource);
         
         // 初始化JdbcTemplate映射
-        jdbcTemplateMap.put("chembl33", primaryJdbcTemplate);
-        jdbcTemplateMap.put("tcrd6124expr2", secondaryJdbcTemplate);
         jdbcTemplateMap.put("login", loginJdbcTemplate);
         
-        logger.info("初始化多数据源服务，已加载 {} 个数据源", dataSourceMap.size());
+        logger.info("初始化数据源服务，已加载 {} 个数据源", dataSourceMap.size());
         logger.info("可用的数据源名称: {}", dataSourceMap.keySet());
     }
 
@@ -125,6 +115,12 @@ public class MultiDataSourceService {
      */
     public boolean removeDataSource(String name) {
         try {
+            // 不允许移除login数据源
+            if ("login".equals(name)) {
+                logger.warn("不允许移除login数据源: {}", name);
+                return false;
+            }
+            
             DataSource dataSource = dataSourceMap.remove(name);
             jdbcTemplateMap.remove(name);
 

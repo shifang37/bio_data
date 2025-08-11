@@ -1331,7 +1331,7 @@ export default {
     const searchQuery = ref('')
     const loadingTables = ref(false)
     const databaseInfo = ref(null)
-    const selectedDatabase = ref('chembl33')
+          const selectedDatabase = ref('login')
     const availableDatabases = ref([])
     
     // 字段值搜索相关的响应式变量
@@ -2655,7 +2655,7 @@ export default {
     
     // 检查数据库是否可以删除（只有用户创建的数据库可以删除）
     const canDeleteDatabase = (database) => {
-      const systemDatabases = ['chembl33', 'tcrd6124expr2', 'login', 'information_schema', 'mysql', 'performance_schema', 'sys']
+              const systemDatabases = ['login', 'information_schema', 'mysql', 'performance_schema', 'sys']
       return !systemDatabases.includes(database.name.toLowerCase())
     }
     
@@ -2686,7 +2686,7 @@ export default {
         const userInfo = userState.getUserInfo()
         const requestData = {
           databaseName: databaseToDelete.value.name,
-          dataSource: 'chembl33', // 使用默认数据源
+                      dataSource: 'login', // 使用默认数据源
           userId: userInfo.userId,
           userType: userInfo.userType
         }
@@ -2706,7 +2706,7 @@ export default {
           
           // 如果当前选中的是被删除的数据库，切换到默认数据库
           if (selectedDatabase.value === databaseToDelete.value.name) {
-            selectedDatabase.value = 'chembl33'
+            selectedDatabase.value = 'login'
             switchDatabase()
           }
           
@@ -2736,7 +2736,7 @@ export default {
      
      // 检查是否为用户数据库
      const isUserDatabase = (databaseName) => {
-       // 只排除真正的MySQL系统数据库，允许业务数据库（如chembl33、tcrd6124expr2）创建表
+               // 只排除真正的MySQL系统数据库，允许业务数据库创建表
        const systemDatabases = ['information_schema', 'mysql', 'performance_schema', 'sys']
        return !systemDatabases.includes(databaseName.toLowerCase())
      }
@@ -3285,7 +3285,7 @@ export default {
            tableName: tableDesign.value.tableName.trim(),
            tableComment: tableDesign.value.tableComment.trim(),
            databaseName: selectedDatabase.value,
-           dataSource: 'chembl33',
+                       dataSource: 'login',
            columns: tableDesign.value.columns.map(col => ({
              name: col.name.trim(),
              dataType: col.dataType,
@@ -3439,7 +3439,7 @@ export default {
           // 尝试获取所有数据库（包括用户创建的）
           const response = await api.get('/api/database/all', {
             params: {
-              dataSource: 'chembl33',
+              dataSource: 'login',
               userId: userInfo.userId,
               userType: userInfo.userType
             }
@@ -3456,8 +3456,6 @@ export default {
             console.error('加载默认数据库列表也失败:', fallbackError)
             // 如果都失败，使用硬编码的默认数据库
           availableDatabases.value = [
-            { name: 'chembl33', displayName: 'ChEMBL 33', description: 'ChEMBL化学生物学数据库' },
-            { name: 'tcrd6124expr2', displayName: 'TCRD 6.12.4', description: '目标中心研究数据库' },
             { name: 'login', displayName: 'Login Database', description: '用户登录数据库（仅管理员）' }
           ]
           }
@@ -3508,7 +3506,7 @@ export default {
           const userInfo = userState.getUserInfo()
           
           const requestData = {
-            dataSource: 'chembl33',
+            dataSource: 'login',
             databaseName: selectedDatabase.value,
             tableName: tableName,
             userId: userInfo.userId,
