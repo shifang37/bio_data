@@ -62,15 +62,15 @@
           全屏
         </el-button>
         
-        <el-button 
-          @click="toggleIsolateView" 
-          size="small"
-          :type="isIsolateView ? 'warning' : 'default'"
-          :disabled="!isSearchActive"
-          title="隔离视图：只显示搜索相关的节点和边"
-        >
-          {{ isIsolateView ? '退出隔离' : '隔离视图' }}
-        </el-button>
+                 <el-button 
+           @click="toggleIsolateView" 
+           size="small"
+           :type="isIsolateView ? 'warning' : 'default'"
+           :disabled="!isSearchActive && !selectedNode"
+           title="隔离视图：只显示搜索相关的节点和边，或选中节点的邻居"
+         >
+           {{ isIsolateView ? '退出隔离' : '隔离视图' }}
+         </el-button>
         
         <el-button @click="showStatistics = !showStatistics" size="small">
           {{ showStatistics ? '隐藏' : '显示' }}统计
@@ -1043,26 +1043,80 @@ export default {
       emit('filter-change', { nodes: filteredNodes, links: filteredLinks })
     }
 
-    const toggleIsolateView = () => {
-      if (!isSearchActive.value) return
-      
-      isIsolateView.value = !isIsolateView.value
-      
-      if (isIsolateView.value) {
-        // 切换到隔离视图
-        isolateSearchResults()
-        ElMessage.success('已切换到隔离视图')
-      } else {
-        // 切换回高亮视图
-        // 先恢复完整数据
-        emit('filter-change', null)
-        // 然后应用高亮
-        setTimeout(() => {
-          highlightSearchResults()
-        }, 50)
-        ElMessage.success('已切换到高亮视图')
+         // 隔离指定节点及其邻居
+     const isolateNodeAndNeighbors = (node) => {
+       // 找到与当前节点相连的所有节点
+       const relatedNodes = new Set([node.id])
+       const relatedLinks = []
+       
+       // 遍历所有边，找到与当前节点相连的节点和边
+       props.graphData.links.forEach(link => {
+         const sourceId = link.source.id || link.source
+         const targetId = link.target.id || link.target
+         
+         if (sourceId === node.id) {
+           relatedNodes.add(targetId)
+           relatedLinks.push(link)
+         } else if (targetId === node.id) {
+           relatedNodes.add(sourceId)
+           relatedLinks.push(link)
+         }
+       })
+       
+       // 创建过滤后的数据
+       const filteredNodes = props.graphData.nodes.filter(n => relatedNodes.has(n.id))
+       const filteredLinks = props.graphData.links.filter(link => {
+         const sourceId = link.source.id || link.source
+         const targetId = link.target.id || link.target
+         return relatedNodes.has(sourceId) && relatedNodes.has(targetId)
+       })
+
+       // 触发过滤变化事件
+       emit('filter-change', { nodes: filteredNodes, links: filteredLinks })
+     }
+
+    // 隔离当前选中的节点及其邻居
+    const isolateSelectedNodeAndNeighbors = () => {
+      if (!selectedNode.value) {
+        ElMessage.warning('请先选择一个节点')
+        return
       }
+      
+      isolateNodeAndNeighbors(selectedNode.value)
     }
+
+         const toggleIsolateView = () => {
+       // 如果有选中的节点，则隔离该节点及其邻居
+       if (selectedNode.value) {
+         isIsolateView.value = !isIsolateView.value
+         
+         if (isIsolateView.value) {
+           // 切换到隔离视图
+           isolateSelectedNodeAndNeighbors()
+         } else {
+           // 切换回完整视图
+           emit('filter-change', null)
+         }
+       } else if (isSearchActive.value) {
+         // 如果有搜索结果，则使用搜索结果的隔离
+         isIsolateView.value = !isIsolateView.value
+         
+         if (isIsolateView.value) {
+           // 切换到隔离视图
+           isolateSearchResults()
+         } else {
+           // 切换回高亮视图
+           // 先恢复完整数据
+           emit('filter-change', null)
+           // 然后应用高亮
+           setTimeout(() => {
+             highlightSearchResults()
+           }, 50)
+         }
+       } else {
+         ElMessage.warning('请先选择一个节点或进行搜索')
+       }
+     }
 
     const clearSearch = () => {
       searchQuery.value = ''
@@ -1201,6 +1255,8 @@ export default {
       handleSearch,
       clearSearch,
       toggleIsolateView,
+      isolateNodeAndNeighbors,
+      isolateSelectedNodeAndNeighbors,
       
       // optimization methods
       optimizeLayoutForGraphSize
