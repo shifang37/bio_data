@@ -191,6 +191,7 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import Papa from 'papaparse'
 import api, { userState } from '../utils/api'
+import knowledgeGraphState from '../utils/knowledgeGraphStore'
 import KnowledgeGraphD3 from '../components/KnowledgeGraphD3.vue'
 
 export default {
@@ -206,10 +207,6 @@ export default {
     const uploadFileType = ref('json')
     const uploadFile = ref(null)
     const processing = ref(false)
-    const currentFile = ref(null)
-    const graphData = ref({ nodes: [], links: [] })
-    const originalGraphData = ref({ nodes: [], links: [] })
-    const statistics = ref({})
     const selectedNodeDetails = ref(null)
     const jsonPreview = ref('')
     const csvPreview = ref([])
@@ -221,10 +218,11 @@ export default {
       header: true
     })
 
-    // 计算属性
-    const hasData = computed(() => {
-      return graphData.value.nodes && graphData.value.nodes.length > 0
-    })
+    // 使用全局状态
+    const currentFile = computed(() => knowledgeGraphState.currentFile)
+    const graphData = computed(() => knowledgeGraphState.graphData)
+    const statistics = computed(() => knowledgeGraphState.statistics)
+    const hasData = computed(() => knowledgeGraphState.hasData)
 
     // 方法
     const handleFileChange = (file) => {
@@ -299,18 +297,13 @@ export default {
         }
 
         if (response.data.success) {
-          graphData.value = response.data.data
-          // 保存原始数据副本用于搜索功能
-          originalGraphData.value = {
-            nodes: [...response.data.data.nodes],
-            links: [...response.data.data.links]
-          }
-          statistics.value = response.data.data.statistics || {}
-          currentFile.value = {
+          // 使用全局状态管理保存数据
+          const fileInfo = {
             name: uploadFile.value.name,
             type: uploadFileType.value,
             size: uploadFile.value.size
           }
+          knowledgeGraphState.setGraphData(response.data.data, fileInfo)
           
           showUploadDialog.value = false
           ElMessage.success('文件解析成功！')
@@ -357,7 +350,7 @@ export default {
         })
 
         if (response.data.success) {
-          statistics.value = response.data.statistics
+          knowledgeGraphState.updateStatistics(response.data.statistics)
         }
       } catch (error) {
         console.error('统计信息计算失败:', error)
@@ -485,10 +478,7 @@ export default {
           type: 'warning'
         }
       ).then(() => {
-        graphData.value = { nodes: [], links: [] }
-        originalGraphData.value = { nodes: [], links: [] }
-        statistics.value = {}
-        currentFile.value = null
+        knowledgeGraphState.clearData()
         selectedNodeDetails.value = null
         ElMessage.success('数据已清除')
       }).catch(() => {
@@ -502,21 +492,7 @@ export default {
     }
 
     const handleFilterChange = (filteredData) => {
-      if (filteredData) {
-        // 搜索模式：使用过滤后的数据
-        graphData.value = {
-          nodes: filteredData.nodes,
-          links: filteredData.links
-        }
-      } else {
-        // 清除搜索：恢复原始数据
-        if (originalGraphData.value) {
-          graphData.value = {
-            nodes: [...originalGraphData.value.nodes],
-            links: [...originalGraphData.value.links]
-          }
-        }
-      }
+      knowledgeGraphState.updateFilteredData(filteredData)
     }
 
     const showNeighbors = async () => {
@@ -552,7 +528,11 @@ export default {
 
     // 生命周期
     onMounted(() => {
-      // 页面加载时可以检查是否有缓存数据
+      // 页面加载时从localStorage恢复数据
+      const hasRestoredData = knowledgeGraphState.loadFromStorage()
+      if (hasRestoredData) {
+        ElMessage.info('已恢复之前的知识图谱数据')
+      }
     })
 
     return {

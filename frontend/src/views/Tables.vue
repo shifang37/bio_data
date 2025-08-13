@@ -1088,7 +1088,7 @@
         class="minimized-dialog" 
         @click="restoreDialog(dialog.id)"
         :style="{ 
-          bottom: `${20 + (searchDialogs.findIndex(d => d.id === dialog.id && d.minimized) * 60)}px`,
+          bottom: `${getMinimizedDialogPosition(dialog.id)}px`,
           right: '20px',
           borderLeftColor: getDatabaseColor(dialog.result.dataSource),
           borderLeftWidth: '4px'
@@ -1295,6 +1295,7 @@ import { ref, onMounted, onUnmounted, computed, onActivated, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Search, Coin, Folder, FolderOpened, Refresh, Plus, Minus, Loading } from '@element-plus/icons-vue'
 import api, { userState, checkPermission, databaseApi } from '../utils/api'
+import searchDialogsState from '../utils/searchDialogsStore'
 import { useRoute } from 'vue-router'
 
 export default {
@@ -1342,9 +1343,9 @@ export default {
     const fieldSearchError = ref('')
     const fieldSearchResultDialogVisible = ref(false)
     
-    // 多弹窗管理
-    const searchDialogs = ref([])
-    const nextDialogId = ref(1)
+    // 多弹窗管理 - 使用全局状态
+    const searchDialogs = computed(() => searchDialogsState.searchDialogs)
+    const nextDialogId = computed(() => searchDialogsState.nextDialogId)
     
     // 搜索进度相关
     const searchProgressDialogVisible = ref(false)
@@ -1868,74 +1869,37 @@ export default {
 
     // 创建新的搜索弹窗
     const createNewSearchDialog = (searchValue, result) => {
-      const newDialog = {
-        id: nextDialogId.value++,
-        searchValue: searchValue,
-        result: result,
-        visible: true,
-        minimized: false
-      }
-      searchDialogs.value.push(newDialog)
+      return searchDialogsState.addSearchDialog(searchValue, result)
     }
 
     // 最小化弹窗
     const minimizeDialog = (dialogId) => {
-      const dialog = searchDialogs.value.find(d => d.id === dialogId)
-      if (dialog) {
-        dialog.minimized = true
-        dialog.visible = false
-      }
+      searchDialogsState.minimizeDialog(dialogId)
     }
 
     // 恢复弹窗
     const restoreDialog = (dialogId) => {
-      const dialog = searchDialogs.value.find(d => d.id === dialogId)
-      if (dialog) {
-        dialog.minimized = false
-        dialog.visible = true
-      }
+      searchDialogsState.restoreDialog(dialogId)
     }
 
     // 关闭弹窗
     const closeDialog = (dialogId) => {
-      const index = searchDialogs.value.findIndex(d => d.id === dialogId)
-      if (index !== -1) {
-        searchDialogs.value.splice(index, 1)
-      }
+      searchDialogsState.closeDialog(dialogId)
     }
 
     // 清空单个搜索
     const clearSingleSearch = (dialogId) => {
-      closeDialog(dialogId)
+      searchDialogsState.clearSingleSearch(dialogId)
     }
 
     // 清空所有搜索
     const clearAllSearches = () => {
-      searchDialogs.value = []
+      searchDialogsState.clearAllSearches()
     }
 
     // 清空特定数据库的搜索结果
     const clearSearchesByDatabase = (databaseName) => {
-      if (!databaseName) return
-      
-      // 只保留不是来自指定数据库的搜索弹窗
-      searchDialogs.value = searchDialogs.value.filter(dialog => {
-        // 获取搜索结果的数据库来源
-        const dialogDataSource = dialog.result?.dataSource 
-        
-        // 如果没有数据库信息，则保留（可能是老的搜索结果）
-        if (!dialogDataSource) {
-          console.log('保留没有数据库信息的搜索结果:', dialog.searchValue)
-          return true
-        }
-        
-        // 只有当数据库来源不同时才保留
-        const shouldKeep = dialogDataSource !== databaseName
-        if (!shouldKeep) {
-          console.log('清空来自数据库', databaseName, '的搜索结果:', dialog.searchValue)
-        }
-        return shouldKeep
-      })
+      searchDialogsState.clearSearchesByDatabase(databaseName)
     }
 
     // 搜索进度相关方法
@@ -2574,7 +2538,7 @@ export default {
           databaseInfo.value = null
         }
         
-        console.log('切换数据库完成，保留了', searchDialogs.value.length, '个搜索结果弹窗')
+        console.log('切换数据库完成，保留了', searchDialogsState.searchDialogs.length, '个搜索结果弹窗')
     }
     
     // 显示新建数据库对话框
@@ -3602,6 +3566,13 @@ export default {
           table.TABLE_NAME.toLowerCase().includes(searchQuery.value.toLowerCase())
         )
       })
+      
+      // 计算最小化对话框的位置
+      const getMinimizedDialogPosition = (dialogId) => {
+        const minimizedDialogs = searchDialogsState.searchDialogs.filter(d => d.minimized)
+        const index = minimizedDialogs.findIndex(d => d.id === dialogId)
+        return 20 + (index * 60)
+      }
 
       onMounted(() => {
         // 初始化权限状态
@@ -3613,6 +3584,12 @@ export default {
         
         // 监听窗口大小变化
         window.addEventListener('resize', updateTableHeight)
+        
+        // 恢复搜索对话框数据
+        const hasRestoredDialogs = searchDialogsState.loadFromStorage()
+        if (hasRestoredDialogs && searchDialogsState.searchDialogs.length > 0) {
+          ElMessage.info(`已恢复 ${searchDialogsState.searchDialogs.length} 个搜索对话框`)
+        }
         
         // 只有在用户已登录时才加载数据
         const userInfo = userState.getUserInfo()
@@ -3817,6 +3794,7 @@ export default {
       clearSingleSearch,
       clearAllSearches,
       clearSearchesByDatabase,
+      getMinimizedDialogPosition,
       // 搜索进度相关
       searchProgressDialogVisible,
       currentSearchValue,
