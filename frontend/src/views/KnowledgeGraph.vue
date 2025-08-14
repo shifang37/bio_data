@@ -527,13 +527,10 @@ export default {
     }
 
     // 生命周期
-    onMounted(() => {
-      // 页面加载时从localStorage恢复数据
-      const hasRestoredData = knowledgeGraphState.loadFromStorage()
-      if (hasRestoredData) {
-        ElMessage.info('已恢复之前的知识图谱数据')
-      }
-    })
+onMounted(() => {
+  // 页面加载时从localStorage恢复数据
+  knowledgeGraphState.loadFromStorage()
+})
 
     return {
       // refs

@@ -225,6 +225,8 @@
 
 <script>
 import api, { userState } from '@/utils/api'
+import { knowledgeGraphState } from '@/utils/knowledgeGraphStore'
+import { searchDialogsState } from '@/utils/searchDialogsStore'
 
 export default {
   name: 'Login',
@@ -479,6 +481,27 @@ export default {
   mounted() {
     // 清除之前的登录信息
     this.$userState.clearUserInfo()
+    
+    // 清除知识图谱数据
+    knowledgeGraphState.clearData()
+    
+    // 清除搜索对话框数据
+    searchDialogsState.clearAllSearches()
+    
+    // 清除所有用户相关的sessionStorage数据
+    const clearAllUserData = () => {
+      try {
+        const keys = Object.keys(sessionStorage)
+        keys.forEach(key => {
+          if (key.includes('knowledgeGraphData_') || key.includes('searchDialogsData_')) {
+            sessionStorage.removeItem(key)
+          }
+        })
+      } catch (error) {
+        console.error('清除用户数据失败:', error)
+      }
+    }
+    clearAllUserData()
   }
 }
 </script>

@@ -78,6 +78,8 @@ import { useRouter } from 'vue-router'
 import { Grid, SwitchButton, Upload, Share } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { userState } from './utils/api'
+import { knowledgeGraphState } from './utils/knowledgeGraphStore'
+import { searchDialogsState } from './utils/searchDialogsStore'
 
 export default {
   name: 'App',
@@ -133,6 +135,27 @@ export default {
         
         // 清除用户状态
         userState.clearUserInfo()
+        
+        // 清除知识图谱数据
+        knowledgeGraphState.clearData()
+        
+        // 清除搜索对话框数据
+        searchDialogsState.clearAllSearches()
+        
+        // 清除所有用户相关的sessionStorage数据
+        const clearAllUserData = () => {
+          try {
+            const keys = Object.keys(sessionStorage)
+            keys.forEach(key => {
+              if (key.includes('knowledgeGraphData_') || key.includes('searchDialogsData_')) {
+                sessionStorage.removeItem(key)
+              }
+            })
+          } catch (error) {
+            console.error('清除用户数据失败:', error)
+          }
+        }
+        clearAllUserData()
         
         // 显示退出成功消息
         ElMessage.success('已成功退出登录')

@@ -952,6 +952,9 @@ export default {
         relatedLinks
       }
       isSearchActive.value = true
+      
+      // 清除之前选中的节点，因为现在有搜索活动
+      selectedNode.value = null
 
       // 如果当前是隔离视图，则切换到隔离模式
       if (isIsolateView.value) {
@@ -1086,19 +1089,8 @@ export default {
     }
 
          const toggleIsolateView = () => {
-       // 如果有选中的节点，则隔离该节点及其邻居
-       if (selectedNode.value) {
-         isIsolateView.value = !isIsolateView.value
-         
-         if (isIsolateView.value) {
-           // 切换到隔离视图
-           isolateSelectedNodeAndNeighbors()
-         } else {
-           // 切换回完整视图
-           emit('filter-change', null)
-         }
-       } else if (isSearchActive.value) {
-         // 如果有搜索结果，则使用搜索结果的隔离
+       // 优先检查是否有搜索结果，如果有则使用搜索隔离
+       if (isSearchActive.value) {
          isIsolateView.value = !isIsolateView.value
          
          if (isIsolateView.value) {
@@ -1112,6 +1104,17 @@ export default {
            setTimeout(() => {
              highlightSearchResults()
            }, 50)
+         }
+       } else if (selectedNode.value) {
+         // 如果没有搜索结果但有选中的节点，则隔离该节点及其邻居
+         isIsolateView.value = !isIsolateView.value
+         
+         if (isIsolateView.value) {
+           // 切换到隔离视图
+           isolateSelectedNodeAndNeighbors()
+         } else {
+           // 切换回完整视图
+           emit('filter-change', null)
          }
        } else {
          ElMessage.warning('请先选择一个节点或进行搜索')

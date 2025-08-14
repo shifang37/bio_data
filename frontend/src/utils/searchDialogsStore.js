@@ -95,56 +95,75 @@ export const searchDialogsState = reactive({
     this.saveToStorage()
   },
   
-  // 保存到localStorage
-  saveToStorage() {
-    try {
-      const dataToSave = {
-        searchDialogs: this.searchDialogs,
-        nextDialogId: this.nextDialogId,
-        timestamp: Date.now()
-      }
-      localStorage.setItem('searchDialogsData', JSON.stringify(dataToSave))
-    } catch (error) {
-      console.error('保存搜索对话框数据到localStorage失败:', error)
-    }
-  },
-  
-  // 从localStorage恢复数据
-  loadFromStorage() {
-    try {
-      const savedData = localStorage.getItem('searchDialogsData')
-      if (savedData) {
-        const data = JSON.parse(savedData)
-        
-        // 检查数据是否过期（24小时）
-        const now = Date.now()
-        const dataAge = now - (data.timestamp || 0)
-        const maxAge = 24 * 60 * 60 * 1000 // 24小时
-        
-        if (dataAge < maxAge) {
-          this.searchDialogs = data.searchDialogs || []
-          this.nextDialogId = data.nextDialogId || 1
-          return true
-        } else {
-          // 数据过期，清除
-          this.clearStorage()
-        }
-      }
-    } catch (error) {
-      console.error('从localStorage恢复搜索对话框数据失败:', error)
-      this.clearStorage()
-    }
-    return false
-  },
-  
-  // 清除localStorage
-  clearStorage() {
-    try {
-      localStorage.removeItem('searchDialogsData')
-    } catch (error) {
-      console.error('清除localStorage中的搜索对话框数据失败:', error)
-    }
-  }
+                // 获取当前用户ID
+              getCurrentUserId() {
+                try {
+                  const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
+                  return userInfo.userId || 'anonymous'
+                } catch (error) {
+                  return 'anonymous'
+                }
+              },
+
+              // 获取存储键名
+              getStorageKey() {
+                const userId = this.getCurrentUserId()
+                return `searchDialogsData_${userId}`
+              },
+
+              // 保存到sessionStorage
+              saveToStorage() {
+                try {
+                  const dataToSave = {
+                    searchDialogs: this.searchDialogs,
+                    nextDialogId: this.nextDialogId,
+                    timestamp: Date.now()
+                  }
+                  const storageKey = this.getStorageKey()
+                  sessionStorage.setItem(storageKey, JSON.stringify(dataToSave))
+                } catch (error) {
+                  console.error('保存搜索对话框数据到sessionStorage失败:', error)
+                }
+              },
+
+              // 从sessionStorage恢复数据
+              loadFromStorage() {
+                try {
+                  const storageKey = this.getStorageKey()
+                  const savedData = sessionStorage.getItem(storageKey)
+                  if (savedData) {
+                    const data = JSON.parse(savedData)
+
+                    // 检查数据是否过期（24小时）
+                    const now = Date.now()
+                    const dataAge = now - (data.timestamp || 0)
+                    const maxAge = 24 * 60 * 60 * 1000 // 24小时
+
+                    if (dataAge < maxAge) {
+                      this.searchDialogs = data.searchDialogs || []
+                      this.nextDialogId = data.nextDialogId || 1
+                      return true
+                    } else {
+                      // 数据过期，清除
+                      this.clearStorage()
+                    }
+                  }
+                } catch (error) {
+                  console.error('从sessionStorage恢复搜索对话框数据失败:', error)
+                  this.clearStorage()
+                }
+                return false
+              },
+
+              // 清除sessionStorage
+              clearStorage() {
+                try {
+                  const storageKey = this.getStorageKey()
+                  sessionStorage.removeItem(storageKey)
+                } catch (error) {
+                  console.error('清除sessionStorage中的搜索对话框数据失败:', error)
+                }
+              }
 })
 
 export default searchDialogsState

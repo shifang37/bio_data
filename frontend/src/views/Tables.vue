@@ -3585,11 +3585,8 @@ export default {
         // 监听窗口大小变化
         window.addEventListener('resize', updateTableHeight)
         
-        // 恢复搜索对话框数据
-        const hasRestoredDialogs = searchDialogsState.loadFromStorage()
-        if (hasRestoredDialogs && searchDialogsState.searchDialogs.length > 0) {
-          ElMessage.info(`已恢复 ${searchDialogsState.searchDialogs.length} 个搜索对话框`)
-        }
+            // 恢复搜索对话框数据
+    searchDialogsState.loadFromStorage()
         
         // 只有在用户已登录时才加载数据
         const userInfo = userState.getUserInfo()
