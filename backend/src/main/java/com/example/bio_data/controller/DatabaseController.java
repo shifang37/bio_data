@@ -1398,6 +1398,41 @@ public class DatabaseController {
     }
 
     /**
+     * 检查表是否存在
+     */
+    @GetMapping("/tables/exists")
+    public ResponseEntity<?> checkTableExists(
+            @RequestParam String dataSource,
+            @RequestParam String databaseName,
+            @RequestParam String tableName,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String userType) {
+        try {
+            // 权限验证
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+            if (permissionCheck != null) {
+                return permissionCheck;
+            }
+            
+            boolean exists = databaseService.checkTableExists(dataSource, databaseName, tableName);
+            
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "exists", exists,
+                "dataSource", dataSource,
+                "databaseName", databaseName,
+                "tableName", tableName
+            ));
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "error", "检查表是否存在失败: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
      * 修改表结构
      */
     @PutMapping("/tables/modify")

@@ -81,10 +81,14 @@
                   <el-input 
                     v-model="autoTableName" 
                     placeholder="将使用CSV文件名作为表名"
-                    :disabled="true"
+                    @input="onTableNameChange"
                   />
                   <div style="color: #999; font-size: 12px; margin-top: 5px;">
-                    系统将自动根据文件名创建表：{{ autoTableName }}
+                    系统将根据您输入的表名创建新表
+                  </div>
+                  <div v-if="tableExistsWarning" style="color: #e6a23c; font-size: 12px; margin-top: 5px;">
+                    <el-icon><Warning /></el-icon>
+                    表名 "{{ autoTableName }}" 在数据库 "{{ selectedDataSource }}" 中已存在，请修改表名或选择其他数据库
                   </div>
                 </el-form-item>
               </el-col>
@@ -119,7 +123,7 @@
             <el-button 
               type="primary" 
               @click="parseFile" 
-              :disabled="!selectedDataSource || (importMethod === 'existing' && !selectedTable)"
+              :disabled="!selectedDataSource || (importMethod === 'existing' && !selectedTable) || (importMethod === 'auto-create' && tableExistsWarning)"
             >
               解析文件
             </el-button>
@@ -148,8 +152,8 @@
             <h4 style="margin-top: 15px;">字段信息预览</h4>
             <div style="margin-bottom: 10px;">
               <el-alert
-                title="主键选择说明"
-                description="请选择一个字段作为主键，主键用于唯一标识记录和重复检测。如果不选择主键，系统将使用全行比较进行重复检测。"
+                title="字段配置说明"
+                description="请选择一个字段作为主键，主键用于唯一标识记录和重复检测。如果不选择主键，系统将使用全行比较进行重复检测。您可以根据实际需要修改系统推断的数据类型。"
                 type="info"
                 show-icon
                 :closable="false"
@@ -173,7 +177,39 @@
                   <el-tag v-if="scope.row.isPrimaryKey" type="danger" size="small" style="margin-left: 8px;">主键</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="inferredType" label="推断类型" width="200" />
+              <el-table-column label="数据类型" width="300">
+                <template #default="scope">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <el-select 
+                      v-model="scope.row.dataType" 
+                      placeholder="选择数据类型"
+                      style="width: 120px"
+                      @change="(value) => onDataTypeChange(scope.row, value)"
+                    >
+                      <el-option
+                        v-for="type in supportedDataTypes"
+                        :key="type.name"
+                        :label="type.name"
+                        :value="type.name"
+                      />
+                    </el-select>
+                    <el-input
+                      v-if="scope.row.needsLength"
+                      v-model="scope.row.length"
+                      placeholder="长度"
+                      style="width: 80px"
+                      @input="(value) => onLengthChange(scope.row, value)"
+                    />
+                    <el-input
+                      v-if="scope.row.needsDecimals"
+                      v-model="scope.row.decimals"
+                      placeholder="小数位"
+                      style="width: 80px"
+                      @input="(value) => onDecimalsChange(scope.row, value)"
+                    />
+                  </div>
+                </template>
+              </el-table-column>
               <el-table-column prop="sample" label="示例数据" />
             </el-table>
             
@@ -390,7 +426,7 @@
             <el-button 
               type="primary" 
               @click="startImport"
-              :disabled="importing || !mappedData.length"
+              :disabled="importing || !mappedData.length || (importMethod === 'auto-create' && tableExistsWarning)"
               :loading="importing"
             >
               开始导入
@@ -405,14 +441,15 @@
 <script>
 import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { UploadFilled } from '@element-plus/icons-vue';
+import { UploadFilled, Warning } from '@element-plus/icons-vue';
 import Papa from 'papaparse';
 import { databaseApi } from '../utils/api';
 
 export default {
   name: 'CsvImporter',
   components: {
-    UploadFilled
+    UploadFilled,
+    Warning
   },
   props: {
     userId: {
@@ -453,13 +490,47 @@ export default {
     const importStatusText = ref('');
     const importResult = ref(null);
     const activeCollapse = ref([]);
+    const tableExistsWarning = ref(false);
+    const tableNameCheckTimeout = ref(null);
 
     const dataSources = ref([]);
     const tables = ref([]);
+    const supportedDataTypes = ref([]);
 
     const previewData = computed(() => {
       return parsedData.value.slice(0, 10);
     });
+
+    // 加载支持的数据类型
+    const loadSupportedDataTypes = async () => {
+      try {
+        const response = await databaseApi.getSupportedDataTypes();
+        // 保留完整的数据类型信息
+        supportedDataTypes.value = response.data;
+      } catch (error) {
+        console.warn('加载支持的数据类型失败:', error.message);
+        // 如果API失败，使用默认的数据类型列表
+        supportedDataTypes.value = [
+          { name: 'TINYINT', needsLength: false, needsDecimals: false },
+          { name: 'SMALLINT', needsLength: false, needsDecimals: false },
+          { name: 'MEDIUMINT', needsLength: false, needsDecimals: false },
+          { name: 'INT', needsLength: false, needsDecimals: false },
+          { name: 'BIGINT', needsLength: false, needsDecimals: false },
+          { name: 'FLOAT', needsLength: true, needsDecimals: true },
+          { name: 'DOUBLE', needsLength: true, needsDecimals: true },
+          { name: 'DECIMAL', needsLength: true, needsDecimals: true },
+          { name: 'CHAR', needsLength: true, needsDecimals: false },
+          { name: 'VARCHAR', needsLength: true, needsDecimals: false },
+          { name: 'TEXT', needsLength: false, needsDecimals: false },
+          { name: 'MEDIUMTEXT', needsLength: false, needsDecimals: false },
+          { name: 'LONGTEXT', needsLength: false, needsDecimals: false },
+          { name: 'DATE', needsLength: false, needsDecimals: false },
+          { name: 'DATETIME', needsLength: false, needsDecimals: false },
+          { name: 'TIMESTAMP', needsLength: false, needsDecimals: false },
+          { name: 'BOOLEAN', needsLength: false, needsDecimals: false }
+        ];
+      }
+    };
 
     // 加载数据源列表
     const loadDataSources = async () => {
@@ -548,13 +619,55 @@ export default {
         const inferredType = inferDataType(sampleValues);
         const sample = sampleValues.slice(0, 3).join(', ') || '空值';
         
+        // 解析推断的类型，提取数据类型和长度
+        const typeInfo = parseDataType(inferredType);
+        
         return {
           columnName: column,
           inferredType: inferredType,
+          dataType: typeInfo.dataType,
+          length: typeInfo.length,
+          decimals: typeInfo.decimals,
+          needsLength: typeInfo.needsLength,
+          needsDecimals: typeInfo.needsDecimals,
           sample: sample,
           isPrimaryKey: false // 默认不是主键，由用户选择
         };
       });
+    };
+
+    // 解析数据类型，提取类型名、长度和小数位
+    const parseDataType = (typeString) => {
+      const result = {
+        dataType: typeString,
+        length: null,
+        decimals: null,
+        needsLength: false,
+        needsDecimals: false
+      };
+      
+      // 匹配带长度和小数位的数据类型，如 DECIMAL(10,2)
+      const match = typeString.match(/^(\w+)(?:\((\d+)(?:,(\d+))?\))?$/);
+      if (match) {
+        result.dataType = match[1];
+        if (match[2]) {
+          result.length = match[2];
+          result.needsLength = true;
+        }
+        if (match[3]) {
+          result.decimals = match[3];
+          result.needsDecimals = true;
+        }
+      }
+      
+      // 根据数据类型设置是否需要长度和小数位
+      const typeConfig = supportedDataTypes.value.find(t => t.name === result.dataType);
+      if (typeConfig) {
+        result.needsLength = typeConfig.needsLength;
+        result.needsDecimals = typeConfig.needsDecimals;
+      }
+      
+      return result;
     };
 
     // 数据类型推断逻辑
@@ -912,10 +1025,25 @@ export default {
       csvColumnsWithTypes.value = [];
       selectedPrimaryKey.value = '';
       noPrimaryKey.value = false;
+      // 清除数据类型相关的临时变量
+      if (csvColumnsWithTypes.value.length > 0) {
+        csvColumnsWithTypes.value.forEach(col => {
+          col.dataType = null;
+          col.length = null;
+          col.decimals = null;
+          col.needsLength = false;
+          col.needsDecimals = false;
+        });
+      }
       importing.value = false;
       importProgress.value = 0;
       importResult.value = null;
       activeCollapse.value = [];
+      tableExistsWarning.value = false;
+      if (tableNameCheckTimeout.value) {
+        clearTimeout(tableNameCheckTimeout.value);
+        tableNameCheckTimeout.value = null;
+      }
     };
 
     // 监听数据库选择的变化
@@ -931,11 +1059,110 @@ export default {
         
         // 重新加载表列表
         loadTables();
+        
+        // 如果是自动建表模式且有表名，检查表是否存在
+        if (importMethod.value === 'auto-create' && autoTableName.value) {
+          checkTableExists();
+        }
       }
     });
 
+    // 监听表名变化（自动建表模式）
+    watch(autoTableName, (newTableName) => {
+      if (importMethod.value === 'auto-create' && newTableName && selectedDataSource.value) {
+        checkTableExists();
+      }
+    });
+
+    // 检查表是否存在
+    const checkTableExists = async () => {
+      if (!selectedDataSource.value || !autoTableName.value) {
+        tableExistsWarning.value = false;
+        return;
+      }
+      
+      try {
+        const response = await databaseApi.checkTableExists(
+          selectedDataSource.value,
+          selectedDataSource.value, // 对于用户创建的数据库，数据库名就是数据源名
+          autoTableName.value
+        );
+        
+        tableExistsWarning.value = response.data.exists;
+        
+        if (response.data.exists) {
+          ElMessage.warning(`表名 "${autoTableName.value}" 在数据库 "${selectedDataSource.value}" 中已存在，请修改表名或选择其他数据库`);
+        }
+      } catch (error) {
+        console.warn('检查表是否存在失败:', error.message);
+        tableExistsWarning.value = false;
+      }
+    };
+
+    // 处理表名变化
+    const onTableNameChange = () => {
+      // 使用防抖，避免频繁请求
+      clearTimeout(tableNameCheckTimeout.value);
+      tableNameCheckTimeout.value = setTimeout(() => {
+        if (importMethod.value === 'auto-create' && autoTableName.value && selectedDataSource.value) {
+          checkTableExists();
+        }
+      }, 500);
+    };
+
+    // 处理数据类型变化
+    const onDataTypeChange = (column, newType) => {
+      column.dataType = newType;
+      
+      // 根据新的数据类型更新needsLength和needsDecimals
+      const typeConfig = supportedDataTypes.value.find(t => t.name === newType);
+      if (typeConfig) {
+        column.needsLength = typeConfig.needsLength;
+        column.needsDecimals = typeConfig.needsDecimals;
+        
+        // 如果不需要长度或小数位，清空相关值
+        if (!typeConfig.needsLength) {
+          column.length = null;
+        }
+        if (!typeConfig.needsDecimals) {
+          column.decimals = null;
+        }
+      }
+      
+      // 更新inferredType
+      updateInferredType(column);
+      
+      ElMessage.success(`已将字段 "${column.columnName}" 的数据类型修改为 "${newType}"`);
+    };
+
+    // 处理长度变化
+    const onLengthChange = (column, newLength) => {
+      column.length = newLength;
+      updateInferredType(column);
+    };
+
+    // 处理小数位变化
+    const onDecimalsChange = (column, newDecimals) => {
+      column.decimals = newDecimals;
+      updateInferredType(column);
+    };
+
+    // 更新推断类型字符串
+    const updateInferredType = (column) => {
+      let typeString = column.dataType;
+      if (column.needsLength && column.length) {
+        typeString += `(${column.length}`;
+        if (column.needsDecimals && column.decimals) {
+          typeString += `,${column.decimals}`;
+        }
+        typeString += ')';
+      }
+      column.inferredType = typeString;
+    };
+
     onMounted(() => {
       loadDataSources();
+      loadSupportedDataTypes();
     });
 
     return {
@@ -967,8 +1194,10 @@ export default {
       importStatusText,
       importResult,
       activeCollapse,
+      tableExistsWarning,
       dataSources,
       tables,
+      supportedDataTypes,
       previewData,
       loadDataSources,
       loadTables,
@@ -981,7 +1210,12 @@ export default {
       resetImporter,
       inferColumnTypes,
       updatePrimaryKeySelection,
-      handleNoPrimaryKeyChange
+      handleNoPrimaryKeyChange,
+      checkTableExists,
+      onTableNameChange,
+      onDataTypeChange,
+      onLengthChange,
+      onDecimalsChange
     };
   }
 };

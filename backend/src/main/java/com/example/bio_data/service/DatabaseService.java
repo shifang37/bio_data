@@ -3164,7 +3164,32 @@ public class DatabaseService {
     }
     
     /**
-     * 检查表是否存在
+     * 检查表是否存在（公共方法，用于API调用）
+     */
+    public boolean checkTableExists(String dataSourceName, String databaseName, String tableName) {
+        try {
+            JdbcTemplate jdbcTemplate;
+            String sql;
+            
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+                sql = "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
+                Integer count = jdbcTemplate.queryForObject(sql, Integer.class, databaseName, tableName);
+                return count != null && count > 0;
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+                sql = "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?";
+                Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tableName);
+                return count != null && count > 0;
+            }
+        } catch (Exception e) {
+            logger.warn("检查表是否存在时出错: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 检查表是否存在（私有方法，用于内部调用）
      */
     private boolean checkTableExists(String dataSourceName, String tableName) {
         try {
