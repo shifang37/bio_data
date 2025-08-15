@@ -12,13 +12,14 @@
             <el-button 
               type="primary" 
               @click="showUploadDialog = true"
-              :icon="Upload"
             >
+              <el-icon><Upload /></el-icon>
               上传文件
             </el-button>
                          <el-dropdown @command="handleExport" trigger="click">
-               <el-button :icon="Download">
-                 导出图片<el-icon class="el-icon--right"><arrow-down /></el-icon>
+               <el-button>
+                 <el-icon><Download /></el-icon>
+                 导出图片<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                </el-button>
                <template #dropdown>
                  <el-dropdown-menu>
@@ -45,8 +46,14 @@
           <span class="file-size">{{ formatFileSize(currentFile.size) }}</span>
         </div>
         <div class="file-actions">
-          <el-button @click="reloadData" :icon="Refresh" size="small">重新加载</el-button>
-          <el-button @click="clearData" :icon="Delete" size="small" type="danger">清除数据</el-button>
+          <el-button @click="reloadData" size="small">
+            <el-icon><Refresh /></el-icon>
+            重新加载
+          </el-button>
+          <el-button @click="clearData" size="small" type="danger">
+            <el-icon><Delete /></el-icon>
+            清除数据
+          </el-button>
         </div>
       </div>
 
@@ -72,8 +79,8 @@
         <!-- 文件类型选择 -->
         <div class="file-type-selector">
           <el-radio-group v-model="uploadFileType">
-            <el-radio label="json">JSON格式</el-radio>
-            <el-radio label="csv">CSV格式</el-radio>
+            <el-radio value="json">JSON格式</el-radio>
+            <el-radio value="csv">CSV格式</el-radio>
           </el-radio-group>
         </div>
 
@@ -87,7 +94,7 @@
           :accept="uploadFileType === 'json' ? '.json' : '.csv'"
           :on-change="handleFileChange"
         >
-          <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+          <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
           <div class="el-upload__text">
             将{{ uploadFileType.toUpperCase() }}文件拖到此处，或<em>点击上传</em>
           </div>
@@ -198,7 +205,13 @@ export default {
   name: 'KnowledgeGraph',
   components: {
     KnowledgeGraphD3,
-    Upload, Download, Document, Refresh, Delete, ArrowDown, UploadFilled
+    Upload,
+    Download,
+    Document,
+    Refresh,
+    Delete,
+    ArrowDown,
+    UploadFilled
   },
   setup() {
     // 响应式数据

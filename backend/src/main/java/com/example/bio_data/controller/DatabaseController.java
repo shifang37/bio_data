@@ -185,37 +185,7 @@ public class DatabaseController {
         }
     }
     
-    /**
-     * 获取指定表的准确行数
-     */
-    @GetMapping("/tables/{tableName}/row-count")
-    public ResponseEntity<Map<String, Object>> getTableRowCount(
-            @PathVariable String tableName,
-            @RequestParam(required = false) String dataSource,
-            @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) String userType) {
-        try {
-            // 权限验证
-            if (userId != null && userType != null) {
-                ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
-                if (permissionCheck != null) {
-                    return ResponseEntity.status(403).body(Map.of("error", "权限不足"));
-                }
-            }
-            
-            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
-            Integer rowCount = databaseService.getTableRowCount(actualDataSource, tableName);
-            
-            Map<String, Object> result = new HashMap<>();
-            result.put("tableName", tableName);
-            result.put("rowCount", rowCount);
-            result.put("dataSource", actualDataSource);
-            
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "获取表行数失败: " + e.getMessage()));
-        }
-    }
+
 
     /**
      * 获取表数据
@@ -1428,6 +1398,40 @@ public class DatabaseController {
             return ResponseEntity.status(500).body(Map.of(
                 "success", false,
                 "error", "检查表是否存在失败: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * 获取表的准确行数
+     */
+    @GetMapping("/tables/{tableName}/row-count")
+    public ResponseEntity<?> getTableRowCount(
+            @PathVariable String tableName,
+            @RequestParam String dataSource,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String userType) {
+        try {
+            // 权限验证
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+            if (permissionCheck != null) {
+                return permissionCheck;
+            }
+            
+            // 获取表行数
+            Integer rowCount = databaseService.getTableRowCount(dataSource, tableName);
+            
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "rowCount", rowCount,
+                "tableName", tableName,
+                "dataSource", dataSource
+            ));
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "error", "获取表行数失败: " + e.getMessage()
             ));
         }
     }

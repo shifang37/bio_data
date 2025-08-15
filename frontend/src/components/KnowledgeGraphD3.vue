@@ -198,8 +198,7 @@
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-overlay">
-      <el-loading-directive />
+    <div v-if="loading" class="loading-overlay" v-loading="loading" element-loading-text="加载中...">
     </div>
   </div>
 </template>

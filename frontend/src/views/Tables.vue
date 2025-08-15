@@ -100,26 +100,44 @@
             <div v-if="canAccessCurrentDatabase">
               <el-row :gutter="20" v-if="databaseInfo">
                 <el-col :span="8">
-                  <el-statistic title="当前数据库" :value="databaseInfo.name || selectedDatabase" />
+                  <el-card shadow="never" style="text-align: center;">
+                    <div style="font-size: 12px; color: #909399; margin-bottom: 8px;">当前数据库</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #303133;">{{ databaseInfo.name || selectedDatabase }}</div>
+                  </el-card>
                 </el-col>
                 <el-col :span="8">
-                  <el-statistic title="数据表总数" :value="databaseInfo.tableCount || 0" />
+                  <el-card shadow="never" style="text-align: center;">
+                    <div style="font-size: 12px; color: #909399; margin-bottom: 8px;">数据表总数</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #303133;">{{ databaseInfo.tableCount || 0 }}</div>
+                  </el-card>
                 </el-col>
                 <el-col :span="8">
-                  <el-statistic title="数据库大小" :value="databaseInfo.sizeDisplay || 'N/A'" />
+                  <el-card shadow="never" style="text-align: center;">
+                    <div style="font-size: 12px; color: #909399; margin-bottom: 8px;">数据库大小</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #303133;">{{ databaseInfo.sizeDisplay || 'N/A' }}</div>
+                  </el-card>
                 </el-col>
               </el-row>
               
               <!-- 数据库信息加载中 -->
               <el-row :gutter="20" v-else>
                 <el-col :span="8">
-                  <el-statistic title="当前数据库" :value="selectedDatabase" />
+                  <el-card shadow="never" style="text-align: center;">
+                    <div style="font-size: 12px; color: #909399; margin-bottom: 8px;">当前数据库</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #303133;">{{ selectedDatabase }}</div>
+                  </el-card>
                 </el-col>
                 <el-col :span="8">
-                  <el-statistic title="数据表总数" :value="'加载中...'" />
+                  <el-card shadow="never" style="text-align: center;">
+                    <div style="font-size: 12px; color: #909399; margin-bottom: 8px;">数据表总数</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #409EFF;">加载中...</div>
+                  </el-card>
                 </el-col>
                 <el-col :span="8">
-                  <el-statistic title="数据库大小" :value="'加载中...'" />
+                  <el-card shadow="never" style="text-align: center;">
+                    <div style="font-size: 12px; color: #909399; margin-bottom: 8px;">数据库大小</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #409EFF;">加载中...</div>
+                  </el-card>
                 </el-col>
               </el-row>
             </div>
@@ -229,9 +247,20 @@
                 element-loading-text="加载表数据中..."
               >
                 <el-table-column prop="TABLE_NAME" label="表名" width="250" sortable />
-                <el-table-column prop="TABLE_ROWS" label="行数" width="120" sortable>
+                <el-table-column label="行数" width="120" sortable>
                   <template #default="scope">
-                    {{ scope.row.TABLE_ROWS?.toLocaleString() || 'N/A' }}
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span>{{ getTableRowCount(scope.row.TABLE_NAME) || scope.row.TABLE_ROWS?.toLocaleString() || 'N/A' }}</span>
+                      <el-button 
+                        size="small" 
+                        type="primary" 
+                        text
+                        @click="refreshTableRowCount(scope.row.TABLE_NAME)"
+                        title="刷新准确行数"
+                      >
+                        <el-icon><Refresh /></el-icon>
+                      </el-button>
+                    </div>
                   </template>
                 </el-table-column>
                 <el-table-column prop="DATA_LENGTH" label="数据大小" width="120" sortable>
@@ -1328,6 +1357,8 @@ export default {
     const tableList = ref([])
     const selectedTable = ref('')
     const structureDialogVisible = ref(false)
+    // 缓存准确的表行数 - 使用持久化存储
+    const tableRowCounts = ref(new Map())
     const dataDialogVisible = ref(false)
     const addDataDialogVisible = ref(false)
     const editDataDialogVisible = ref(false)
@@ -1405,6 +1436,113 @@ export default {
     const lastDataUpdateTime = ref(null)
     const shouldRefreshOnActivate = ref(false)
     const updatedTables = ref(new Set()) // 记录哪些表被更新了
+    
+    // 表行数相关函数
+    const getTableRowCountCacheKey = (dataSource, tableName) => {
+      return `table_row_count_${dataSource}_${tableName}`
+    }
+    
+    const loadTableRowCountFromCache = (dataSource, tableName) => {
+      const key = getTableRowCountCacheKey(dataSource, tableName)
+      const cached = localStorage.getItem(key)
+      if (cached) {
+        try {
+          const data = JSON.parse(cached)
+          if (data && data.rowCount !== undefined) {
+            // 新格式缓存
+            tableRowCounts.value.set(tableName, data.rowCount)
+            return data.rowCount
+          }
+        } catch (e) {
+          // 尝试旧格式缓存
+          const rowCount = parseInt(cached)
+          if (!isNaN(rowCount)) {
+            tableRowCounts.value.set(tableName, rowCount)
+            return rowCount
+          }
+        }
+      }
+      return null
+    }
+    
+    const saveTableRowCountToCache = (dataSource, tableName, rowCount) => {
+      const key = getTableRowCountCacheKey(dataSource, tableName)
+      const cacheData = {
+        rowCount: rowCount,
+        timestamp: Date.now()
+      }
+      localStorage.setItem(key, JSON.stringify(cacheData))
+      tableRowCounts.value.set(tableName, rowCount)
+    }
+    
+    const cleanExpiredRowCountCache = () => {
+      // 清理超过7天的缓存
+      const expireTime = 7 * 24 * 60 * 60 * 1000 // 7天
+      const now = Date.now()
+      
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('table_row_count_')) {
+          try {
+            const data = JSON.parse(localStorage.getItem(key))
+            if (data && data.timestamp && (now - data.timestamp > expireTime)) {
+              localStorage.removeItem(key)
+            }
+          } catch (e) {
+            // 旧格式缓存，删除
+            localStorage.removeItem(key)
+          }
+        }
+      })
+    }
+    
+    const getTableRowCount = (tableName) => {
+      // 先检查内存缓存
+      let rowCount = tableRowCounts.value.get(tableName)
+      if (rowCount) {
+        return rowCount.toLocaleString()
+      }
+      
+      // 再检查localStorage缓存
+      rowCount = loadTableRowCountFromCache(selectedDatabase.value, tableName)
+      if (rowCount) {
+        return rowCount.toLocaleString()
+      }
+      
+      return null
+    }
+    
+    const refreshTableRowCount = async (tableName) => {
+      try {
+        const userInfo = userState.getUserInfo()
+        const response = await databaseApi.getTableRowCount(
+          tableName, 
+          selectedDatabase.value, 
+          userInfo.userId, 
+          userInfo.userType
+        )
+        saveTableRowCountToCache(selectedDatabase.value, tableName, response.data.rowCount)
+        ElMessage.success(`已刷新表 ${tableName} 的行数`)
+      } catch (error) {
+        console.error('获取表行数失败:', error)
+        ElMessage.error('获取表行数失败: ' + (error.response?.data?.error || error.message))
+      }
+    }
+    
+    const updateTableRowCount = async (tableName) => {
+      // 静默更新表行数，用于数据变更后的自动更新
+      try {
+        const userInfo = userState.getUserInfo()
+        const response = await databaseApi.getTableRowCount(
+          tableName, 
+          selectedDatabase.value, 
+          userInfo.userId, 
+          userInfo.userType
+        )
+        saveTableRowCountToCache(selectedDatabase.value, tableName, response.data.rowCount)
+      } catch (error) {
+        console.warn('自动更新表行数失败:', error)
+      }
+    }
     
     // 外键相关变量
     const availableTables = ref([])
@@ -1562,28 +1700,7 @@ export default {
       updatedTables.value.add(tableName)
     }
     
-    // 更新特定表的行数
-    const updateTableRowCount = async (tableName) => {
-      try {
-        const userInfo = userState.getUserInfo()
-        const response = await databaseApi.getTableRowCount(
-          tableName, 
-          selectedDatabase.value, 
-          userInfo.userId, 
-          userInfo.userType
-        )
-        
-        if (response.data && response.data.rowCount !== undefined) {
-          // 更新表列表中的行数
-          const tableIndex = tableList.value.findIndex(table => table.TABLE_NAME === tableName)
-          if (tableIndex !== -1) {
-            tableList.value[tableIndex].TABLE_ROWS = response.data.rowCount
-          }
-        }
-      } catch (error) {
-        console.error(`更新表 ${tableName} 行数失败:`, error)
-      }
-    }
+
     
     // 更新权限状态
     const updatePermissionState = () => {
@@ -1639,6 +1756,13 @@ export default {
         
         console.log('API请求成功，获取到表数据:', response.data?.length || 0, '个表')
         tableList.value = response.data
+        
+        // 加载缓存的表行数
+        if (response.data && Array.isArray(response.data)) {
+          response.data.forEach(table => {
+            loadTableRowCountFromCache(selectedDatabase.value, table.TABLE_NAME)
+          })
+        }
         
         // 异步加载数据库统计信息
         loadDatabaseInfo()
@@ -2171,7 +2295,17 @@ export default {
 
     const formatDate = (dateStr) => {
       if (!dateStr) return 'N/A'
-      return new Date(dateStr).toLocaleString('zh-CN')
+      
+      try {
+        const date = new Date(dateStr)
+        if (isNaN(date.getTime())) {
+          return 'N/A'
+        }
+        return date.toLocaleString('zh-CN')
+      } catch (error) {
+        console.warn('日期格式化失败:', dateStr, error)
+        return 'N/A'
+      }
     }
 
     const getColumnWidth = (columnName) => {
@@ -2537,6 +2671,9 @@ export default {
         
         // 清空当前页面的字段搜索结果（不影响最小化的搜索弹窗）
         clearFieldSearch()
+        
+        // 清空内存中的表行数缓存（localStorage缓存保持）
+        tableRowCounts.value.clear()
         
         // 重置数据库信息
         databaseInfo.value = null
@@ -3601,6 +3738,9 @@ export default {
         // 监听窗口大小变化
         window.addEventListener('resize', updateTableHeight)
         
+        // 清理过期的表行数缓存
+        cleanExpiredRowCountCache()
+        
             // 恢复搜索对话框数据
     searchDialogsState.loadFromStorage()
         
@@ -3784,6 +3924,10 @@ export default {
       markDataUpdated,
       markTableUpdated,
       updateTableRowCount,
+      getTableRowCount,
+      refreshTableRowCount,
+      loadTableRowCountFromCache,
+      saveTableRowCountToCache,
       // 删除表相关
       confirmDeleteTable,
       deleteTable,
