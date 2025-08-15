@@ -305,6 +305,17 @@
         />
       </div>
       
+      <!-- 复合主键提示 -->
+      <div v-if="primaryKeyColumns.length > 1" style="margin-bottom: 15px;">
+        <el-alert
+          title="复合主键"
+          :description="`此表使用复合主键，包含以下列：${primaryKeyColumns.map(col => col.COLUMN_NAME).join(', ')}`"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
+      </div>
+      
       <el-table :data="tableColumns" style="width: 100%">
         <el-table-column prop="COLUMN_NAME" label="列名" width="150" />
         <el-table-column prop="DATA_TYPE" label="当前数据类型" width="120" />
@@ -1418,7 +1429,12 @@ export default {
       newDecimals: ''
     })
     
-         // 数据类型分组（用于修改表结构）
+         // 主键列计算属性
+    const primaryKeyColumns = computed(() => {
+      return tableColumns.value.filter(col => col.COLUMN_KEY === 'PRI')
+    })
+
+    // 数据类型分组（用于修改表结构）
      const dataTypeGroups = computed(() => {
        const groups = {}
        
@@ -3815,6 +3831,7 @@ export default {
       modifyColumn,
       modifyColumnForm,
       dataTypeGroups,
+      primaryKeyColumns,
       showModifyColumnDialog,
       confirmModifyColumn
     }

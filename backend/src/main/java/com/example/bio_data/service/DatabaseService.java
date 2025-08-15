@@ -3235,16 +3235,24 @@ public class DatabaseService {
             }
             
             // 添加CSV列
-            String primaryKeyColumn = null;
+            List<String> primaryKeyColumns = new ArrayList<>();
             
             // 从CSV列信息中获取用户选择的主键
+            logger.info("开始解析CSV列信息，列数量: {}", csvColumns.size());
             for (Map<String, Object> column : csvColumns) {
+                String columnName = (String) column.get("columnName");
                 Boolean isPrimaryKey = (Boolean) column.get("isPrimaryKey");
+                
+                logger.info("检查列: {}, isPrimaryKey: {}", columnName, isPrimaryKey);
+                
                 if (isPrimaryKey != null && isPrimaryKey) {
-                    primaryKeyColumn = sanitizeColumnName((String) column.get("columnName"));
-                    break;
+                    String sanitizedColumnName = sanitizeColumnName(columnName);
+                    primaryKeyColumns.add(sanitizedColumnName);
+                    logger.info("添加主键列: {} (原始: {})", sanitizedColumnName, columnName);
                 }
             }
+            
+            logger.info("用户选择的主键列: {}", primaryKeyColumns);
             
             for (int i = 0; i < csvColumns.size(); i++) {
                 Map<String, Object> column = csvColumns.get(i);
@@ -3257,20 +3265,28 @@ public class DatabaseService {
                 // 优化数据类型，确保整数类型有足够的长度
                 String optimizedDataType = optimizeDataType(dataType, csvData, columnName);
                 
-                // 如果这是用户选择的主键列
-                if (columnName.equals(primaryKeyColumn)) {
-                    // 移除AUTO_INCREMENT关键字，因为用户可能选择非自增主键
-                    String cleanDataType = optimizedDataType.replace("AUTO_INCREMENT", "").trim();
-                    createTableSql.append("`").append(columnName).append("` ").append(cleanDataType).append(" PRIMARY KEY");
-                } else {
-                    // 普通列，移除AUTO_INCREMENT关键字
-                    String cleanDataType = optimizedDataType.replace("AUTO_INCREMENT", "").trim();
-                    createTableSql.append("`").append(columnName).append("` ").append(cleanDataType);
-                }
+                // 普通列，移除AUTO_INCREMENT关键字
+                String cleanDataType = optimizedDataType.replace("AUTO_INCREMENT", "").trim();
+                createTableSql.append("`").append(columnName).append("` ").append(cleanDataType);
                 
                 if (i < csvColumns.size() - 1) {
                     createTableSql.append(", ");
                 }
+            }
+            
+            // 添加复合主键约束
+            if (!primaryKeyColumns.isEmpty()) {
+                logger.info("添加复合主键约束，主键列: {}", primaryKeyColumns);
+                createTableSql.append(", PRIMARY KEY (");
+                for (int i = 0; i < primaryKeyColumns.size(); i++) {
+                    createTableSql.append("`").append(primaryKeyColumns.get(i)).append("`");
+                    if (i < primaryKeyColumns.size() - 1) {
+                        createTableSql.append(", ");
+                    }
+                }
+                createTableSql.append(")");
+            } else {
+                logger.info("没有选择主键列，不添加主键约束");
             }
             
             createTableSql.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");

@@ -43,8 +43,8 @@
           <div v-if="fileList.length > 0" style="margin-top: 20px;">
             <el-form-item label="导入方式">
               <el-radio-group v-model="importMethod" @change="onImportMethodChange">
-                <el-radio label="existing">导入到现有表</el-radio>
-                <el-radio label="auto-create">自动建表导入</el-radio>
+                <el-radio value="existing">导入到现有表</el-radio>
+                <el-radio value="auto-create">自动建表导入</el-radio>
               </el-radio-group>
               <div style="color: #999; font-size: 12px; margin-top: 5px;">
                 自动建表模式将根据CSV文件字段自动创建表，表名为文件名
@@ -162,13 +162,10 @@
             <el-table :data="csvColumnsWithTypes" style="width: 100%; margin-bottom: 20px;">
               <el-table-column label="主键" width="80" align="center">
                 <template #default="scope">
-                  <el-radio 
-                    v-model="selectedPrimaryKey" 
-                    :label="scope.row.columnName"
+                  <el-checkbox 
+                    v-model="scope.row.isPrimaryKey"
                     @change="updatePrimaryKeySelection"
-                  >
-                    <span></span>
-                  </el-radio>
+                  />
                 </template>
               </el-table-column>
               <el-table-column prop="columnName" label="字段名" width="200">
@@ -322,9 +319,9 @@
             <!-- 自动建表模式的特别提示 -->
             <div v-if="importMethod === 'auto-create'" style="margin-top: 10px;">
               <el-alert
-                v-if="selectedPrimaryKey"
-                :title="`已选择主键：${selectedPrimaryKey}`"
-                description="追加模式将基于此主键进行重复检测"
+                v-if="selectedPrimaryKeys.length > 0"
+                :title="`已选择复合主键：${selectedPrimaryKeys.join(', ')}`"
+                description="追加模式将基于此复合主键进行重复检测"
                 type="success"
                 show-icon
                 :closable="false"
@@ -350,20 +347,20 @@
 
           <el-form label-width="120px">
             <el-form-item label="导入策略">
-              <el-radio-group v-model="importStrategy">
-                <el-radio label="append">追加模式（检测重复数据，只导入不同的数据）</el-radio>
-                <el-radio label="overwrite">覆盖模式（清空表后重新导入所有数据）</el-radio>
-              </el-radio-group>
+                          <el-radio-group v-model="importStrategy">
+              <el-radio value="append">追加模式（检测重复数据，只导入不同的数据）</el-radio>
+              <el-radio value="overwrite">覆盖模式（清空表后重新导入所有数据）</el-radio>
+            </el-radio-group>
               <div style="color: #999; font-size: 12px; margin-top: 5px;">
                 追加模式会检查数据重复性，覆盖模式会删除表中所有数据后重新导入
               </div>
             </el-form-item>
 
             <el-form-item label="导入模式">
-              <el-radio-group v-model="importMode">
-                <el-radio label="normal">普通模式（快速，但可能部分失败）</el-radio>
-                <el-radio label="transaction">事务模式（安全，全部成功或全部失败）</el-radio>
-              </el-radio-group>
+                          <el-radio-group v-model="importMode">
+              <el-radio value="normal">普通模式（快速，但可能部分失败）</el-radio>
+              <el-radio value="transaction">事务模式（安全，全部成功或全部失败）</el-radio>
+            </el-radio-group>
             </el-form-item>
 
             <el-form-item label="批处理大小">
@@ -479,7 +476,7 @@ export default {
     const importMode = ref('normal');
     const autoTableName = ref('');
     const csvColumnsWithTypes = ref([]);
-    const selectedPrimaryKey = ref('');
+    const selectedPrimaryKeys = ref([]);
     const noPrimaryKey = ref(false);
     const importStrategy = ref('append');
     const importMethod = ref('existing'); // 'existing' 或 'auto-create'
@@ -731,19 +728,21 @@ export default {
 
     // 更新主键选择
     const updatePrimaryKeySelection = () => {
-      if (selectedPrimaryKey.value) {
+      // 收集所有被选中的主键列
+      selectedPrimaryKeys.value = csvColumnsWithTypes.value
+        .filter(col => col.isPrimaryKey)
+        .map(col => col.columnName);
+      
+      // 如果有选择主键，取消"不设置主键"选项
+      if (selectedPrimaryKeys.value.length > 0) {
         noPrimaryKey.value = false;
-        // 更新csvColumnsWithTypes中的isPrimaryKey标记
-        csvColumnsWithTypes.value.forEach(col => {
-          col.isPrimaryKey = col.columnName === selectedPrimaryKey.value;
-        });
       }
     };
 
     // 处理"不设置主键"选项
     const handleNoPrimaryKeyChange = (value) => {
       if (value) {
-        selectedPrimaryKey.value = '';
+        selectedPrimaryKeys.value = [];
         csvColumnsWithTypes.value.forEach(col => {
           col.isPrimaryKey = false;
         });
@@ -817,7 +816,7 @@ export default {
             // 自动建表模式，推断字段类型
             inferColumnTypes();
             // 重置主键选择
-            selectedPrimaryKey.value = '';
+            selectedPrimaryKeys.value = [];
             noPrimaryKey.value = false;
           }
           
@@ -907,6 +906,12 @@ export default {
 
         let response;
         if (importMethod.value === 'auto-create') {
+          // 调试信息：检查发送给后端的数据
+          console.log('发送给后端的csvColumns:', csvColumnsWithTypes.value)
+          const primaryKeyColumns = csvColumnsWithTypes.value.filter(col => col.isPrimaryKey)
+          console.log('选中的主键列:', primaryKeyColumns)
+          console.log('主键列数量:', primaryKeyColumns.length)
+          
           // 自动建表导入
           response = await databaseApi.autoCreateTableAndImport({
             dataSource: selectedDataSource.value,
@@ -1023,7 +1028,7 @@ export default {
       importMethod.value = 'existing';
       autoTableName.value = '';
       csvColumnsWithTypes.value = [];
-      selectedPrimaryKey.value = '';
+      selectedPrimaryKeys.value = [];
       noPrimaryKey.value = false;
       // 清除数据类型相关的临时变量
       if (csvColumnsWithTypes.value.length > 0) {
@@ -1185,7 +1190,7 @@ export default {
       importMethod,
       autoTableName,
       csvColumnsWithTypes,
-      selectedPrimaryKey,
+      selectedPrimaryKeys,
       noPrimaryKey,
       batchSize,
       importing,
