@@ -106,6 +106,7 @@ public class DatabaseService {
             String sql = "SELECT " +
                     "COLUMN_NAME, " +
                     "DATA_TYPE, " +
+                    "COLUMN_TYPE, " +
                     "IS_NULLABLE, " +
                     "COLUMN_DEFAULT, " +
                     "COLUMN_KEY, " +
@@ -121,6 +122,7 @@ public class DatabaseService {
             String sql = "SELECT " +
                     "COLUMN_NAME, " +
                     "DATA_TYPE, " +
+                    "COLUMN_TYPE, " +
                     "IS_NULLABLE, " +
                     "COLUMN_DEFAULT, " +
                     "COLUMN_KEY, " +
@@ -1800,7 +1802,8 @@ public class DatabaseService {
         Set<String> typesWithLength = Set.of(
             "varchar", "char", "varbinary", "binary",
             "decimal", "numeric", "float", "double",
-            "bit", "tinyint", "smallint", "mediumint", "int", "bigint"
+            "bit", "tinyint", "smallint", "mediumint", "int", "bigint",
+            "enum", "set"
         );
         return typesWithLength.contains(dataType.toLowerCase());
     }
@@ -3919,12 +3922,60 @@ public class DatabaseService {
             
             // 构建新的数据类型
             String fullDataType = newDataType.toUpperCase();
+            logger.info("修改表结构 - 数据类型: {}, 长度参数: [{}], needsLength: {}", 
+                       fullDataType, newLength, needsLength(newDataType));
+            
             if (needsLength(newDataType)) {
+                // 检查是否提供了有效的长度参数
+                boolean hasValidLength = newLength != null && !newLength.trim().isEmpty() && !newLength.trim().equals("null");
+                logger.info("修改表结构 - hasValidLength: {}, newLength: [{}]", hasValidLength, newLength);
+                
                 fullDataType += "(";
-                if (newLength != null && !newLength.trim().isEmpty()) {
-                    fullDataType += newLength;
-                    if (needsDecimals(newDataType) && newDecimals != null && !newDecimals.trim().isEmpty()) {
-                        fullDataType += "," + newDecimals;
+                
+                if (hasValidLength) {
+                    // 对于ENUM和SET类型，需要特殊处理值格式（在添加括号之前判断类型）
+                    if ("ENUM".equals(newDataType.toUpperCase()) || "SET".equals(newDataType.toUpperCase())) {
+                        // 如果前端传来的值不包含引号，则添加引号
+                        String values = newLength.trim();
+                        logger.info("处理ENUM/SET值 - 原始值: [{}], 数据类型: {}", values, fullDataType);
+                        if (!values.startsWith("'")) {
+                            // 将逗号分隔的值转换为带引号的格式
+                            String[] valueArray = values.split(",");
+                            StringBuilder formattedValues = new StringBuilder();
+                            for (int i = 0; i < valueArray.length; i++) {
+                                if (i > 0) formattedValues.append(",");
+                                formattedValues.append("'").append(valueArray[i].trim()).append("'");
+                            }
+                            String formatted = formattedValues.toString();
+                            logger.info("格式化后的ENUM/SET值: [{}]", formatted);
+                            fullDataType += formatted;
+                        } else {
+                            fullDataType += values;
+                        }
+                    } else {
+                        // 对于非ENUM/SET类型，直接使用长度值
+                        logger.info("处理非ENUM/SET类型 - 数据类型: {}, 长度值: [{}]", fullDataType, newLength);
+                        fullDataType += newLength;
+                        if (needsDecimals(newDataType) && newDecimals != null && !newDecimals.trim().isEmpty() && !newDecimals.trim().equals("null")) {
+                            fullDataType += "," + newDecimals;
+                        }
+                    }
+                } else {
+                    // 为需要长度但没有提供长度的类型提供默认值
+                    if ("ENUM".equals(newDataType.toUpperCase())) {
+                        fullDataType += "'value1','value2'"; // ENUM默认值
+                    } else if ("SET".equals(newDataType.toUpperCase())) {
+                        fullDataType += "'value1','value2'"; // SET默认值
+                    } else if ("FLOAT".equals(newDataType.toUpperCase())) {
+                        fullDataType += "10,2"; // FLOAT默认精度
+                    } else if ("DOUBLE".equals(newDataType.toUpperCase())) {
+                        fullDataType += "10,2"; // DOUBLE默认精度
+                    } else if ("DECIMAL".equals(newDataType.toUpperCase()) || "NUMERIC".equals(newDataType.toUpperCase())) {
+                        fullDataType += "10,2"; // DECIMAL默认精度
+                    } else if ("VARCHAR".equals(newDataType.toUpperCase())) {
+                        fullDataType += "255"; // VARCHAR默认长度
+                    } else if ("CHAR".equals(newDataType.toUpperCase())) {
+                        fullDataType += "1"; // CHAR默认长度
                     }
                 }
                 fullDataType += ")";

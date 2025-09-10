@@ -411,7 +411,21 @@
           </el-select>
         </el-form-item>
         
-        <el-form-item label="长度" v-if="needsLength(modifyColumnForm.newDataType)">
+        <!-- ENUM和SET类型的值输入 -->
+        <el-form-item label="枚举值" v-if="modifyColumnForm.newDataType === 'ENUM' || modifyColumnForm.newDataType === 'SET'">
+          <el-input 
+            v-model="modifyColumnForm.newLength" 
+            :placeholder="modifyColumnForm.newDataType === 'ENUM' ? '请输入枚举值，用逗号分隔，如：value1,value2,value3' : '请输入集合值，用逗号分隔，如：value1,value2,value3'"
+            type="textarea"
+            :rows="3"
+          />
+          <div style="margin-top: 5px; color: #909399; font-size: 12px;">
+            {{ modifyColumnForm.newDataType === 'ENUM' ? '枚举类型只能选择其中一个值' : '集合类型可以选择多个值的组合' }}
+          </div>
+        </el-form-item>
+        
+        <!-- 其他类型的长度输入 -->
+        <el-form-item label="长度" v-if="needsLength(modifyColumnForm.newDataType) && modifyColumnForm.newDataType !== 'ENUM' && modifyColumnForm.newDataType !== 'SET'">
           <el-input 
             v-model="modifyColumnForm.newLength" 
             placeholder="长度"
@@ -582,7 +596,29 @@
           :required="column.IS_NULLABLE === 'NO' && !column.EXTRA.includes('auto_increment')"
         >
           <div style="display: flex; align-items: center; gap: 10px;">
+            <!-- ENUM类型使用下拉选择 -->
+            <el-select 
+              v-if="isEnumType(column)"
+              v-model="newRowData[column.COLUMN_NAME]"
+              :placeholder="getColumnPlaceholder(column)"
+              :disabled="column.EXTRA.includes('auto_increment')"
+              style="flex: 1; min-width: 200px;"
+              clearable
+              filterable
+              :popper-append-to-body="false"
+            >
+              <el-option
+                v-for="value in getEnumValues(column)"
+                :key="value"
+                :label="value"
+                :value="value"
+              >
+                <span style="font-weight: 500;">{{ value }}</span>
+              </el-option>
+            </el-select>
+            <!-- 其他类型使用输入框 -->
             <el-input 
+              v-else
               v-model="newRowData[column.COLUMN_NAME]"
               :placeholder="getColumnPlaceholder(column)"
               :disabled="column.EXTRA.includes('auto_increment')"
@@ -623,7 +659,29 @@
           :label="column.COLUMN_NAME"
         >
           <div style="display: flex; align-items: center; gap: 10px;">
+            <!-- ENUM类型使用下拉选择 -->
+            <el-select 
+              v-if="isEnumType(column)"
+              v-model="editRowData[column.COLUMN_NAME]"
+              :placeholder="getColumnPlaceholder(column)"
+              :disabled="column.COLUMN_KEY === 'PRI' || column.EXTRA.includes('auto_increment')"
+              style="flex: 1; min-width: 200px;"
+              clearable
+              filterable
+              :popper-append-to-body="false"
+            >
+              <el-option
+                v-for="value in getEnumValues(column)"
+                :key="value"
+                :label="value"
+                :value="value"
+              >
+                <span style="font-weight: 500;">{{ value }}</span>
+              </el-option>
+            </el-select>
+            <!-- 其他类型使用输入框 -->
             <el-input 
+              v-else
               v-model="editRowData[column.COLUMN_NAME]"
               :placeholder="getColumnPlaceholder(column)"
               :disabled="column.COLUMN_KEY === 'PRI' || column.EXTRA.includes('auto_increment')"
@@ -2471,6 +2529,33 @@ export default {
       return desc.join(' | ')
     }
 
+    // 检查是否为ENUM类型
+    const isEnumType = (column) => {
+      return column.DATA_TYPE.toLowerCase() === 'enum'
+    }
+
+    // 从ENUM字段定义中提取可选值
+    const getEnumValues = (column) => {
+      if (!isEnumType(column)) return []
+      
+      // 从COLUMN_TYPE中提取ENUM值，格式如：enum('value1','value2','value3')
+      const columnType = column.COLUMN_TYPE || ''
+      const match = columnType.match(/enum\((.*?)\)/i)
+      
+      if (match) {
+        // 提取括号内的内容，然后分割并清理引号
+        const valuesStr = match[1]
+        const values = valuesStr.split(',').map(value => {
+          // 移除前后的引号和空格
+          return value.trim().replace(/^['"]|['"]$/g, '')
+        }).filter(value => value.length > 0) // 过滤空值
+        
+        return values
+      }
+      
+      return []
+    }
+
     const confirmDeleteRow = async (row) => {
       // 检查写入权限
       const permission = checkDatabasePermission(selectedDatabase.value, 'write')
@@ -3835,6 +3920,8 @@ export default {
       getColumnPlaceholder,
       getColumnTagType,
       getColumnDescription,
+      isEnumType,
+      getEnumValues,
       confirmDeleteRow,
       deleteRow,
       formatBytes,
