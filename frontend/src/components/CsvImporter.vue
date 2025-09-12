@@ -98,10 +98,20 @@
               <el-col :span="12">
                 <el-form-item label="编码格式">
                   <el-select v-model="encoding" placeholder="选择编码格式">
-                    <el-option label="UTF-8" value="utf-8" />
-                    <el-option label="GBK" value="gbk" />
-                    <el-option label="ASCII" value="ascii" />
+                    <el-option label="UTF-8 (现代标准)" value="utf-8" />
+                    <el-option label="GBK (ANSI中文)" value="gbk" />
+                    <el-option label="GB18030 (中文扩展)" value="gb18030" />
+                    <el-option label="ASCII (纯英文)" value="ascii" />
                   </el-select>
+                  <div style="color: #999; font-size: 12px; margin-top: 5px;">
+                    <div>如出现乱码，请尝试不同的编码格式</div>
+                    <div style="margin-top: 3px;">
+                      <strong>推荐选择：</strong>
+                      <span style="color: #409eff;">UTF-8</span>（现代标准） | 
+                      <span style="color: #67c23a;">GBK</span>（记事本ANSI） |
+                      <span style="color: #e6a23c;">GB18030</span>（中文扩展）
+                    </div>
+                  </div>
                 </el-form-item>
               </el-col>
               <el-col :span="12">
@@ -127,6 +137,26 @@
             >
               解析文件
             </el-button>
+            <el-button 
+              type="info" 
+              @click="autoDetectEncoding" 
+              :disabled="!fileList.length"
+            >
+              自动检测编码
+            </el-button>
+            
+            <!-- ANSI编码特别提示 -->
+            <div v-if="encoding === 'gbk'" style="margin-top: 10px; padding: 10px; background-color: #f0f9ff; border: 1px solid #409eff; border-radius: 4px;">
+              <div style="color: #409eff; font-weight: bold; margin-bottom: 5px;">
+                <el-icon><InfoFilled /></el-icon>
+                GBK编码说明
+              </div>
+              <div style="color: #666; font-size: 12px;">
+                • GBK编码对应Windows记事本的"ANSI"编码<br>
+                • 适用于包含中文的Excel导出文件<br>
+                • 如果UTF-8显示乱码，请选择此编码
+              </div>
+            </div>
           </div>
         </div>
 
@@ -438,7 +468,7 @@
 <script>
 import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { UploadFilled, Warning } from '@element-plus/icons-vue';
+import { UploadFilled, Warning, InfoFilled } from '@element-plus/icons-vue';
 import Papa from 'papaparse';
 import { databaseApi } from '../utils/api';
 
@@ -446,7 +476,8 @@ export default {
   name: 'CsvImporter',
   components: {
     UploadFilled,
-    Warning
+    Warning,
+    InfoFilled
   },
   props: {
     userId: {
@@ -722,7 +753,12 @@ export default {
         }
       }
       
-      if (maxLength <= 255) return `VARCHAR(${Math.max(255, maxLength + 50)})`;
+      // 根据实际文本长度推断VARCHAR长度
+      if (maxLength <= 255) {
+        // 为文本长度预留一些空间，但不少于50，不超过255
+        const suggestedLength = Math.min(255, Math.max(50, maxLength + 20));
+        return `VARCHAR(${suggestedLength})`;
+      }
       return 'TEXT';
     };
 
@@ -784,48 +820,274 @@ export default {
 
       const file = fileList.value[0].raw;
       
-      Papa.parse(file, {
-        header: hasHeader.value,
-        delimiter: delimiter.value,
-        encoding: encoding.value,
-        skipEmptyLines: true,
-        complete: (results) => {
-          if (results.errors.length > 0) {
-            ElMessage.error('CSV解析错误: ' + results.errors[0].message);
-            return;
+      // 使用FileReader根据指定编码读取文件
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        const content = e.target.result;
+        
+        Papa.parse(content, {
+          header: hasHeader.value,
+          delimiter: delimiter.value,
+          skipEmptyLines: true,
+          complete: (results) => {
+            if (results.errors.length > 0) {
+              ElMessage.error('CSV解析错误: ' + results.errors[0].message);
+              return;
+            }
+            
+            parsedData.value = results.data;
+            
+            if (hasHeader.value) {
+              csvColumns.value = results.meta.fields;
+            } else {
+              csvColumns.value = Object.keys(parsedData.value[0] || {});
+            }
+            
+            if (parsedData.value.length === 0) {
+              ElMessage.error('CSV文件为空');
+              return;
+            }
+          
+            ElMessage.success(`成功解析 ${parsedData.value.length} 条记录`);
+            
+            if (importMethod.value === 'existing' && tableColumns.value.length > 0) {
+              setupColumnMapping();
+            } else if (importMethod.value === 'auto-create') {
+              // 自动建表模式，推断字段类型
+              inferColumnTypes();
+              // 重置主键选择
+              selectedPrimaryKeys.value = [];
+              noPrimaryKey.value = false;
+            }
+            
+            currentStep.value = 1;
+          },
+          error: (error) => {
+            ElMessage.error('CSV解析失败: ' + error.message);
           }
-          
-          parsedData.value = results.data;
-          
-          if (hasHeader.value) {
-            csvColumns.value = results.meta.fields;
-          } else {
-            csvColumns.value = Object.keys(parsedData.value[0] || {});
-          }
-          
-          if (parsedData.value.length === 0) {
-            ElMessage.error('CSV文件为空');
-            return;
-          }
-          
-          ElMessage.success(`成功解析 ${parsedData.value.length} 条记录`);
-          
-          if (importMethod.value === 'existing' && tableColumns.value.length > 0) {
-            setupColumnMapping();
-          } else if (importMethod.value === 'auto-create') {
-            // 自动建表模式，推断字段类型
-            inferColumnTypes();
-            // 重置主键选择
-            selectedPrimaryKeys.value = [];
-            noPrimaryKey.value = false;
-          }
-          
-          currentStep.value = 1;
-        },
-        error: (error) => {
-          ElMessage.error('文件解析失败: ' + error.message);
+        });
+      };
+      
+      reader.onerror = (e) => {
+        ElMessage.error('文件读取失败，请检查文件是否完整或尝试其他编码格式');
+      };
+      
+      // 根据选择的编码格式读取文件
+      try {
+        if (encoding.value === 'gbk' || encoding.value === 'gb18030') {
+          // 对于GBK/GB18030编码，需要特殊处理
+          reader.readAsArrayBuffer(file);
+          reader.onload = (e) => {
+            try {
+              // 使用TextDecoder解码中文编码
+              const decoder = new TextDecoder(encoding.value);
+              const content = decoder.decode(e.target.result);
+              parseContent(content);
+            } catch (decodeError) {
+              ElMessage.error(`${encoding.value.toUpperCase()}编码解析失败，请尝试UTF-8编码: ` + decodeError.message);
+              
+              // 如果GBK失败，自动尝试GB18030
+              if (encoding.value === 'gbk') {
+                try {
+                  const gb18030Decoder = new TextDecoder('gb18030');
+                  const content = gb18030Decoder.decode(e.target.result);
+                  parseContent(content);
+                  ElMessage.success('已自动切换到GB18030编码解析');
+                } catch (fallbackError) {
+                  ElMessage.error('自动切换GB18030编码也失败，请手动选择UTF-8编码');
+                }
+              }
+            }
+          };
+        } else {
+          // UTF-8和ASCII编码
+          reader.readAsText(file, encoding.value);
         }
-      });
+      } catch (error) {
+        ElMessage.error('不支持的编码格式: ' + encoding.value);
+      }
+      
+      // 解析内容的通用方法
+      function parseContent(content) {
+        Papa.parse(content, {
+          header: hasHeader.value,
+          delimiter: delimiter.value,
+          skipEmptyLines: true,
+          complete: (results) => {
+            if (results.errors.length > 0) {
+              ElMessage.error('CSV解析错误: ' + results.errors[0].message);
+              return;
+            }
+            
+            parsedData.value = results.data;
+            
+            if (hasHeader.value) {
+              csvColumns.value = results.meta.fields;
+            } else {
+              csvColumns.value = Object.keys(parsedData.value[0] || {});
+            }
+            
+            if (parsedData.value.length === 0) {
+              ElMessage.error('CSV文件为空');
+              return;
+            }
+            
+            ElMessage.success(`成功解析 ${parsedData.value.length} 条记录`);
+            
+            if (importMethod.value === 'existing' && tableColumns.value.length > 0) {
+              setupColumnMapping();
+            } else if (importMethod.value === 'auto-create') {
+              // 自动建表模式，推断字段类型
+              inferColumnTypes();
+              // 重置主键选择
+              selectedPrimaryKeys.value = [];
+              noPrimaryKey.value = false;
+            }
+            
+            currentStep.value = 1;
+          },
+          error: (error) => {
+            ElMessage.error('CSV解析失败: ' + error.message);
+          }
+        });
+      }
+    };
+
+    // 智能编码检测（支持中英文混合）
+    const autoDetectEncoding = async () => {
+      if (!fileList.value.length) {
+        ElMessage.error('请先选择文件');
+        return;
+      }
+
+      const file = fileList.value[0].raw;
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        const buffer = e.target.result;
+        const uint8Array = new Uint8Array(buffer);
+        
+        // 检测结果
+        let detectedEncoding = 'utf-8';
+        let confidence = '低';
+        let detectionDetails = [];
+        
+        // 1. 检测BOM标记
+        if (uint8Array.length >= 3 && 
+            uint8Array[0] === 0xEF && 
+            uint8Array[1] === 0xBB && 
+            uint8Array[2] === 0xBF) {
+          detectedEncoding = 'utf-8';
+          confidence = '高';
+          detectionDetails.push('检测到UTF-8 BOM标记');
+          ElMessage.success(`检测到UTF-8编码（带BOM），置信度：${confidence}`);
+          encoding.value = detectedEncoding;
+          return;
+        }
+        
+        // 2. 多编码尝试解析（取样本进行测试）
+        const sampleSize = Math.min(2000, uint8Array.length);
+        const sample = uint8Array.slice(0, sampleSize);
+        
+        // ANSI检测：检查是否包含中文字节范围
+        const hasChineseBytes = sample.some(byte => byte >= 0x80 && byte <= 0xFF);
+        
+        const encodingTests = [
+          { name: 'gbk', decoder: new TextDecoder('gbk'), priority: hasChineseBytes ? 3 : 1 }, // ANSI优先
+          { name: 'utf-8', decoder: new TextDecoder('utf-8', { fatal: true }), priority: 2 },
+          { name: 'gb18030', decoder: new TextDecoder('gb18030'), priority: 1 }
+        ];
+        
+        // 根据优先级排序
+        encodingTests.sort((a, b) => b.priority - a.priority);
+        
+        let bestEncoding = null;
+        let bestScore = -1;
+        
+        for (const test of encodingTests) {
+          try {
+            const content = test.decoder.decode(sample);
+            let score = 0;
+            
+            // 评分标准
+            const chineseChars = (content.match(/[\u4e00-\u9fff]/g) || []).length;
+            const englishChars = (content.match(/[a-zA-Z]/g) || []).length;
+            const numbers = (content.match(/[0-9]/g) || []).length;
+            const validChars = chineseChars + englishChars + numbers;
+            const totalChars = content.length;
+            
+            // 计算有效字符比例
+            const validRatio = totalChars > 0 ? validChars / totalChars : 0;
+            
+            // 检查是否有乱码特征
+            const hasGarbage = /[��\uFFFD\x00-\x08\x0B\x0C\x0E-\x1F]/.test(content);
+            const hasValidStructure = /[,;\t\r\n]/.test(content); // CSV结构特征
+            
+            // 评分计算
+            score = validRatio * 100;
+            if (hasGarbage) score -= 50;
+            if (!hasValidStructure) score -= 20;
+            if (chineseChars > 0 && englishChars > 0) score += 10; // 中英混合加分
+            
+            // ANSI/GBK特殊加分
+            if (test.name === 'gbk' && hasChineseBytes && chineseChars > 0) {
+              score += 15; // GBK解析中文成功时加分
+            }
+            
+            // UTF-8严格模式额外检查
+            if (test.name === 'utf-8' && !hasGarbage && chineseChars > 0) {
+              score += 5; // UTF-8无乱码且有中文时加分
+            }
+            
+            detectionDetails.push(`${test.name.toUpperCase()}: 有效字符${(validRatio*100).toFixed(1)}%, 中文${chineseChars}个, 英文${englishChars}个, 评分${score.toFixed(1)}`);
+            
+            if (score > bestScore) {
+              bestScore = score;
+              bestEncoding = test.name;
+              
+              // 设置置信度
+              if (score >= 80) confidence = '高';
+              else if (score >= 60) confidence = '中';
+              else confidence = '低';
+            }
+            
+          } catch (error) {
+            detectionDetails.push(`${test.name.toUpperCase()}: 解码失败`);
+          }
+        }
+        
+        detectedEncoding = bestEncoding || 'utf-8';
+        
+        // 显示详细检测结果
+        const message = `
+检测结果：${detectedEncoding.toUpperCase()}编码
+置信度：${confidence}
+评分：${bestScore.toFixed(1)}
+
+检测详情：
+${detectionDetails.join('\n')}
+
+建议：
+• 记事本显示ANSI编码 → 选择GBK编码
+• 中英文混合文件推荐UTF-8编码
+• Excel导出的CSV通常是GBK编码
+• 如果UTF-8乱码，大概率是GBK编码
+        `.trim();
+        
+        ElMessageBox.alert(message, '编码检测结果', {
+          confirmButtonText: '确定',
+          type: 'info'
+        });
+        
+        encoding.value = detectedEncoding;
+      };
+      
+      reader.onerror = () => {
+        ElMessage.error('文件读取失败，无法检测编码');
+      };
+      
+      reader.readAsArrayBuffer(file);
     };
 
     // 验证数据并继续
@@ -1210,6 +1472,7 @@ export default {
       handleFileChange,
       onImportMethodChange,
       parseFile,
+      autoDetectEncoding,
       validateAndProceed,
       startImport,
       resetImporter,

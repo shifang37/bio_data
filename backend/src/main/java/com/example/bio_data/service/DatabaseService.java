@@ -1696,8 +1696,8 @@ public class DatabaseService {
             
             sql.append(")");
             
-            // 添加表选项
-            sql.append(" ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+            // 添加表选项 - 使用utf8mb4支持完整的UTF-8字符集
+            sql.append(" ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             
             // 添加表注释
             if (tableComment != null && !tableComment.trim().isEmpty()) {
@@ -2937,10 +2937,169 @@ public class DatabaseService {
     }
     
     /**
-     * 基于主键过滤重复数据
+     * 基于主键过滤重复数据（优化版本 - 批量检测）
      */
     private List<Map<String, Object>> filterDuplicatesByPrimaryKeys(String dataSourceName, String tableName, 
             List<Map<String, Object>> dataList, List<String> primaryKeys) {
+        
+        if (primaryKeys.isEmpty() || dataList.isEmpty()) {
+            return dataList;
+        }
+        
+        try {
+            logger.info("开始批量检测重复数据 - 主键: {}, 数据量: {}", primaryKeys, dataList.size());
+            long startTime = System.currentTimeMillis();
+            
+            // 过滤掉主键值不完整的记录
+            List<Map<String, Object>> validRecords = new ArrayList<>();
+            for (Map<String, Object> record : dataList) {
+                boolean hasAllPrimaryKeys = true;
+                for (String pk : primaryKeys) {
+                    if (record.get(pk) == null) {
+                        hasAllPrimaryKeys = false;
+                        logger.warn("记录的主键值不完整，跳过: {}", record);
+                        break;
+                    }
+                }
+                if (hasAllPrimaryKeys) {
+                    validRecords.add(record);
+                }
+            }
+            
+            if (validRecords.isEmpty()) {
+                return new ArrayList<>();
+            }
+            
+            // 批量查询已存在的主键值
+            Set<String> existingPrimaryKeys = batchCheckExistingPrimaryKeys(dataSourceName, tableName, validRecords, primaryKeys);
+            
+            // 在内存中过滤重复数据
+            List<Map<String, Object>> uniqueList = validRecords.stream()
+                    .filter(record -> {
+                        String compositeKey = buildCompositePrimaryKey(record, primaryKeys);
+                        return !existingPrimaryKeys.contains(compositeKey);
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+            
+            long endTime = System.currentTimeMillis();
+            logger.info("批量检测重复数据完成 - 原始: {}, 有效: {}, 去重后: {}, 耗时: {}ms", 
+                    dataList.size(), validRecords.size(), uniqueList.size(), endTime - startTime);
+            
+            return uniqueList;
+            
+        } catch (Exception e) {
+            logger.error("基于主键过滤重复数据失败: {}", e.getMessage());
+            // 出错时回退到逐条检测
+            return filterDuplicatesByPrimaryKeysLegacy(dataSourceName, tableName, dataList, primaryKeys);
+        }
+    }
+    
+    /**
+     * 批量检查已存在的主键值
+     */
+    private Set<String> batchCheckExistingPrimaryKeys(String dataSourceName, String tableName, 
+            List<Map<String, Object>> dataList, List<String> primaryKeys) {
+        
+        if (dataList.isEmpty() || primaryKeys.isEmpty()) {
+            return new HashSet<>();
+        }
+        
+        try {
+            JdbcTemplate jdbcTemplate;
+            
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+            }
+            
+            // 分批查询以避免IN子句过长
+            int batchSize = 1000;
+            Set<String> existingKeys = new HashSet<>();
+            
+            for (int i = 0; i < dataList.size(); i += batchSize) {
+                int endIndex = Math.min(i + batchSize, dataList.size());
+                List<Map<String, Object>> batch = dataList.subList(i, endIndex);
+                
+                if (batch.isEmpty()) {
+                    continue;
+                }
+                
+                // 构建批量查询SQL
+                String sql = buildBatchCheckSql(dataSourceName, tableName, primaryKeys, batch.size());
+                
+                // 准备参数
+                List<Object> params = new ArrayList<>();
+                for (Map<String, Object> record : batch) {
+                    for (String pk : primaryKeys) {
+                        params.add(record.get(pk));
+                    }
+                }
+                
+                // 执行查询
+                List<Map<String, Object>> existingRecords = jdbcTemplate.queryForList(sql, params.toArray());
+                
+                // 构建复合主键字符串
+                for (Map<String, Object> record : existingRecords) {
+                    String compositeKey = buildCompositePrimaryKey(record, primaryKeys);
+                    existingKeys.add(compositeKey);
+                }
+            }
+            
+            logger.info("批量检查完成 - 检查了 {} 条记录，发现 {} 个重复主键", dataList.size(), existingKeys.size());
+            return existingKeys;
+            
+        } catch (Exception e) {
+            logger.error("批量检查主键失败: {}", e.getMessage(), e);
+            return new HashSet<>();
+        }
+    }
+    
+    /**
+     * 构建批量检查SQL
+     */
+    private String buildBatchCheckSql(String dataSourceName, String tableName, List<String> primaryKeys, int recordCount) {
+        String pkColumns = primaryKeys.stream()
+                .map(pk -> "`" + pk + "`")
+                .collect(java.util.stream.Collectors.joining(", "));
+        
+        // 构建复合主键的IN条件
+        String valuePattern = "(" + primaryKeys.stream()
+                .map(pk -> "?")
+                .collect(java.util.stream.Collectors.joining(", ")) + ")";
+        
+        String inClause = java.util.stream.IntStream.range(0, recordCount)
+                .mapToObj(i -> valuePattern)
+                .collect(java.util.stream.Collectors.joining(", "));
+        
+        if (isUserCreatedDatabase(dataSourceName)) {
+            return String.format("SELECT %s FROM `%s`.`%s` WHERE (%s) IN (%s)", 
+                    pkColumns, dataSourceName, tableName, pkColumns, inClause);
+        } else {
+            return String.format("SELECT %s FROM `%s` WHERE (%s) IN (%s)", 
+                    pkColumns, tableName, pkColumns, inClause);
+        }
+    }
+    
+    /**
+     * 构建复合主键字符串
+     */
+    private String buildCompositePrimaryKey(Map<String, Object> record, List<String> primaryKeys) {
+        return primaryKeys.stream()
+                .map(pk -> {
+                    Object value = record.get(pk);
+                    return value != null ? value.toString() : "NULL";
+                })
+                .collect(java.util.stream.Collectors.joining("||"));
+    }
+    
+    /**
+     * 旧版逐条检测方法（作为备用）
+     */
+    private List<Map<String, Object>> filterDuplicatesByPrimaryKeysLegacy(String dataSourceName, String tableName, 
+            List<Map<String, Object>> dataList, List<String> primaryKeys) {
+        
+        logger.warn("使用备用的逐条检测方法");
         
         if (primaryKeys.isEmpty() || dataList.isEmpty()) {
             return dataList;
@@ -3006,10 +3165,165 @@ public class DatabaseService {
     }
     
     /**
-     * 基于所有列过滤重复数据（当没有主键时）
+     * 基于所有列过滤重复数据（优化版本 - 批量检测）
      */
     private List<Map<String, Object>> filterDuplicatesByAllColumns(String dataSourceName, String tableName, 
             List<Map<String, Object>> dataList) {
+        
+        if (dataList.isEmpty()) {
+            return dataList;
+        }
+        
+        try {
+            logger.info("开始批量检测重复数据(所有列) - 数据量: {}", dataList.size());
+            long startTime = System.currentTimeMillis();
+            
+            // 获取表的所有列
+            List<Map<String, Object>> columns = getTableColumns(dataSourceName, tableName);
+            List<String> columnNames = columns.stream()
+                    .map(col -> (String) col.get("COLUMN_NAME"))
+                    .collect(java.util.stream.Collectors.toList());
+            
+            if (columnNames.isEmpty()) {
+                return dataList;
+            }
+            
+            // 批量查询已存在的记录
+            Set<String> existingRowKeys = batchCheckExistingRows(dataSourceName, tableName, dataList, columnNames);
+            
+            // 在内存中过滤重复数据
+            List<Map<String, Object>> uniqueList = dataList.stream()
+                    .filter(record -> {
+                        String rowKey = buildCompositeRowKey(record, columnNames);
+                        return !existingRowKeys.contains(rowKey);
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+            
+            long endTime = System.currentTimeMillis();
+            logger.info("批量检测重复数据(所有列)完成 - 原始: {}, 去重后: {}, 耗时: {}ms", 
+                    dataList.size(), uniqueList.size(), endTime - startTime);
+            
+            return uniqueList;
+            
+        } catch (Exception e) {
+            logger.error("基于所有列过滤重复数据失败: {}", e.getMessage());
+            // 出错时回退到逐条检测
+            return filterDuplicatesByAllColumnsLegacy(dataSourceName, tableName, dataList);
+        }
+    }
+    
+    /**
+     * 批量检查已存在的完整行记录
+     */
+    private Set<String> batchCheckExistingRows(String dataSourceName, String tableName, 
+            List<Map<String, Object>> dataList, List<String> columnNames) {
+        
+        if (dataList.isEmpty() || columnNames.isEmpty()) {
+            return new HashSet<>();
+        }
+        
+        try {
+            JdbcTemplate jdbcTemplate;
+            
+            if (isUserCreatedDatabase(dataSourceName)) {
+                jdbcTemplate = getJdbcTemplate(DEFAULT_DATASOURCE);
+            } else {
+                jdbcTemplate = getJdbcTemplate(dataSourceName);
+            }
+            
+            // 由于全列比较复杂性高，采用较小的批次
+            int batchSize = 200;
+            Set<String> existingKeys = new HashSet<>();
+            
+            for (int i = 0; i < dataList.size(); i += batchSize) {
+                int endIndex = Math.min(i + batchSize, dataList.size());
+                List<Map<String, Object>> batch = dataList.subList(i, endIndex);
+                
+                if (batch.isEmpty()) {
+                    continue;
+                }
+                
+                // 构建批量查询SQL - 使用OR条件连接每行的AND条件
+                String sql = buildBatchCheckAllColumnsSql(dataSourceName, tableName, columnNames, batch.size());
+                
+                // 准备参数
+                List<Object> params = new ArrayList<>();
+                for (Map<String, Object> record : batch) {
+                    // 每个记录的每个列需要两个参数（用于null处理）
+                    for (String col : columnNames) {
+                        Object value = record.get(col);
+                        params.add(value);
+                        params.add(value);
+                    }
+                }
+                
+                // 执行查询 - 返回所有列以构建行标识
+                List<Map<String, Object>> existingRecords = jdbcTemplate.queryForList(sql, params.toArray());
+                
+                // 构建行标识字符串
+                for (Map<String, Object> record : existingRecords) {
+                    String rowKey = buildCompositeRowKey(record, columnNames);
+                    existingKeys.add(rowKey);
+                }
+            }
+            
+            logger.info("批量检查完成(所有列) - 检查了 {} 条记录，发现 {} 个重复行", dataList.size(), existingKeys.size());
+            return existingKeys;
+            
+        } catch (Exception e) {
+            logger.error("批量检查行记录失败: {}", e.getMessage(), e);
+            return new HashSet<>();
+        }
+    }
+    
+    /**
+     * 构建全列批量检查SQL
+     */
+    private String buildBatchCheckAllColumnsSql(String dataSourceName, String tableName, 
+            List<String> columnNames, int recordCount) {
+        
+        String allColumns = columnNames.stream()
+                .map(col -> "`" + col + "`")
+                .collect(java.util.stream.Collectors.joining(", "));
+        
+        // 构建单行的条件 - 处理null值
+        String singleRowCondition = columnNames.stream()
+                .map(col -> String.format("((`%s` = ?) OR (`%s` IS NULL AND ? IS NULL))", col, col))
+                .collect(java.util.stream.Collectors.joining(" AND "));
+        
+        // 构建多行的OR条件
+        String allRowsCondition = java.util.stream.IntStream.range(0, recordCount)
+                .mapToObj(i -> "(" + singleRowCondition + ")")
+                .collect(java.util.stream.Collectors.joining(" OR "));
+        
+        if (isUserCreatedDatabase(dataSourceName)) {
+            return String.format("SELECT %s FROM `%s`.`%s` WHERE %s", 
+                    allColumns, dataSourceName, tableName, allRowsCondition);
+        } else {
+            return String.format("SELECT %s FROM `%s` WHERE %s", 
+                    allColumns, tableName, allRowsCondition);
+        }
+    }
+    
+    /**
+     * 构建行标识字符串（基于所有列）
+     */
+    private String buildCompositeRowKey(Map<String, Object> record, List<String> columnNames) {
+        return columnNames.stream()
+                .map(col -> {
+                    Object value = record.get(col);
+                    return value != null ? value.toString() : "NULL";
+                })
+                .collect(java.util.stream.Collectors.joining("||"));
+    }
+    
+    /**
+     * 旧版基于所有列的逐条检测方法（作为备用）
+     */
+    private List<Map<String, Object>> filterDuplicatesByAllColumnsLegacy(String dataSourceName, String tableName, 
+            List<Map<String, Object>> dataList) {
+        
+        logger.warn("使用备用的逐条检测方法(所有列)");
         
         if (dataList.isEmpty()) {
             return dataList;
