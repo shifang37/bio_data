@@ -3,14 +3,14 @@
     <el-card class="box-card">
       <template #header>
         <div class="card-header">
-          <span>CSV文件批量导入</span>
+          <span>数据文件批量导入</span>
           <el-button v-if="!importing" type="primary" @click="resetImporter">重置</el-button>
         </div>
       </template>
 
       <!-- 步骤指示器 -->
       <el-steps :active="currentStep" finish-status="success" align-center>
-        <el-step title="选择文件" description="选择要导入的CSV文件"></el-step>
+        <el-step title="选择文件" description="选择要导入的数据文件"></el-step>
         <el-step title="预览数据" description="预览和验证数据格式"></el-step>
         <el-step title="导入数据" description="执行批量数据导入"></el-step>
       </el-steps>
@@ -25,22 +25,32 @@
             :on-change="handleFileChange"
             :file-list="fileList"
             :limit="1"
-            accept=".csv"
+            accept=".csv,.xlsx,.xls"
           >
             <el-icon class="el-icon--upload">
               <UploadFilled />
             </el-icon>
             <div class="el-upload__text">
-              将CSV文件拖到此处，或<em>点击上传</em>
+              将CSV或Excel文件拖到此处，或<em>点击上传</em>
             </div>
             <template #tip>
               <div class="el-upload__tip">
-                只能上传CSV文件，且文件大小不能超过100MB
+                支持CSV、Excel文件，文件大小不能超过100MB
               </div>
             </template>
           </el-upload>
 
           <div v-if="fileList.length > 0" style="margin-top: 20px;">
+            <!-- 文件类型显示 -->
+            <el-form-item label="文件类型">
+              <el-tag :type="currentFileType === 'excel' ? 'success' : 'primary'">
+                {{ currentFileType === 'excel' ? 'Excel文件' : 'CSV文件' }}
+              </el-tag>
+              <span v-if="selectedSheet" style="margin-left: 10px; color: #666;">
+                工作表: {{ selectedSheet }}
+              </span>
+            </el-form-item>
+            
             <el-form-item label="导入方式">
               <el-radio-group v-model="importMethod" @change="onImportMethodChange">
                 <el-radio value="existing">导入到现有表</el-radio>
@@ -95,7 +105,7 @@
             </el-row>
 
             <el-row :gutter="20">
-              <el-col :span="12">
+              <el-col :span="12" v-if="currentFileType === 'csv'">
                 <el-form-item label="编码格式">
                   <el-select v-model="encoding" placeholder="选择编码格式">
                     <el-option label="UTF-8 (现代标准)" value="utf-8" />
@@ -114,7 +124,7 @@
                   </div>
                 </el-form-item>
               </el-col>
-              <el-col :span="12">
+              <el-col :span="12" v-if="currentFileType === 'csv'">
                 <el-form-item label="分隔符">
                   <el-select v-model="delimiter" placeholder="选择分隔符">
                     <el-option label="逗号 (,)" value="," />
@@ -123,6 +133,15 @@
                     <el-option label="竖线 (|)" value="|" />
                   </el-select>
                 </el-form-item>
+              </el-col>
+              <el-col :span="24" v-if="currentFileType === 'excel'">
+                <el-alert
+                  title="Excel文件说明"
+                  description="Excel文件会自动解析，无需设置编码格式和分隔符。系统会自动识别工作表结构和数据类型。"
+                  type="info"
+                  show-icon
+                  :closable="false"
+                />
               </el-col>
             </el-row>
 
@@ -138,6 +157,7 @@
               解析文件
             </el-button>
             <el-button 
+              v-if="currentFileType === 'csv'"
               type="info" 
               @click="autoDetectEncoding" 
               :disabled="!fileList.length"
@@ -556,6 +576,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { UploadFilled, Warning, InfoFilled } from '@element-plus/icons-vue';
 import Papa from 'papaparse';
 import { databaseApi } from '../utils/api';
+import { parseExcelFile, convertExcelToCsvFormat, detectFileType, getSupportedFileTypes } from '../utils/excelParser';
 
 export default {
   name: 'CsvImporter',
@@ -597,6 +618,9 @@ export default {
     const importStrategy = ref('append');
     const importMethod = ref('existing'); // 'existing' 或 'auto-create'
     const batchSize = ref(5000);
+    const currentFileType = ref('csv'); // 'csv' 或 'excel'
+    const availableSheets = ref([]);
+    const selectedSheet = ref('');
     const importing = ref(false);
     const importProgress = ref(0);
     const importStatus = ref('');
@@ -892,6 +916,13 @@ export default {
       if (file && file.name) {
         autoTableName.value = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '_');
       }
+      
+      // 检测文件类型
+      currentFileType.value = detectFileType(file);
+      
+      // 重置相关状态
+      availableSheets.value = [];
+      selectedSheet.value = '';
     };
 
     // 处理导入方式变化
@@ -911,8 +942,8 @@ export default {
       }
     };
 
-    // 解析CSV文件
-    const parseFile = () => {
+    // 解析文件（支持CSV和Excel）
+    const parseFile = async () => {
       if (!fileList.value.length) {
         ElMessage.error('请先选择文件');
         return;
@@ -920,138 +951,251 @@ export default {
 
       const file = fileList.value[0].raw;
       
-      // 使用FileReader根据指定编码读取文件
-      const reader = new FileReader();
-      
-      reader.onload = (e) => {
-        const content = e.target.result;
-        
-        Papa.parse(content, {
-          header: hasHeader.value,
-          delimiter: delimiter.value,
-          skipEmptyLines: true,
-          complete: (results) => {
-            if (results.errors.length > 0) {
-              ElMessage.error('CSV解析错误: ' + results.errors[0].message);
-              return;
-            }
-            
-            parsedData.value = results.data;
-            
-            if (hasHeader.value) {
-              csvColumns.value = results.meta.fields;
-            } else {
-              csvColumns.value = Object.keys(parsedData.value[0] || {});
-            }
-            
-            if (parsedData.value.length === 0) {
-              ElMessage.error('CSV文件为空');
-              return;
-            }
-          
-            ElMessage.success(`成功解析 ${parsedData.value.length} 条记录`);
-            
-            if (importMethod.value === 'existing' && tableColumns.value.length > 0) {
-              setupColumnMapping();
-            } else if (importMethod.value === 'auto-create') {
-              // 自动建表模式，推断字段类型
-              inferColumnTypes();
-              // 重置主键选择
-              selectedPrimaryKeys.value = [];
-              noPrimaryKey.value = false;
-            }
-            
-            currentStep.value = 1;
-          },
-          error: (error) => {
-            ElMessage.error('CSV解析失败: ' + error.message);
-          }
-        });
-      };
-      
-      reader.onerror = (e) => {
-        ElMessage.error('文件读取失败，请检查文件是否完整或尝试其他编码格式');
-      };
-      
-      // 根据选择的编码格式读取文件
       try {
-        if (encoding.value === 'gbk' || encoding.value === 'gb18030') {
-          // 对于GBK/GB18030编码，需要特殊处理
-          reader.readAsArrayBuffer(file);
-          reader.onload = (e) => {
-            try {
-              // 使用TextDecoder解码中文编码
-              const decoder = new TextDecoder(encoding.value);
-              const content = decoder.decode(e.target.result);
-              parseContent(content);
-            } catch (decodeError) {
-              ElMessage.error(`${encoding.value.toUpperCase()}编码解析失败，请尝试UTF-8编码: ` + decodeError.message);
-              
-              // 如果GBK失败，自动尝试GB18030
-              if (encoding.value === 'gbk') {
-                try {
-                  const gb18030Decoder = new TextDecoder('gb18030');
-                  const content = gb18030Decoder.decode(e.target.result);
-                  parseContent(content);
-                  ElMessage.success('已自动切换到GB18030编码解析');
-                } catch (fallbackError) {
-                  ElMessage.error('自动切换GB18030编码也失败，请手动选择UTF-8编码');
-                }
-              }
-            }
-          };
+        if (currentFileType.value === 'excel') {
+          // 解析Excel文件
+          await parseExcelFileHandler(file);
         } else {
-          // UTF-8和ASCII编码
-          reader.readAsText(file, encoding.value);
+          // 解析CSV文件
+          await parseCsvFile(file);
         }
       } catch (error) {
-        ElMessage.error('不支持的编码格式: ' + encoding.value);
+        ElMessage.error('文件解析失败: ' + error.message);
+      }
+    };
+
+    // 解析Excel文件
+    const parseExcelFileHandler = async (file) => {
+      try {
+        const sheets = await parseExcelFile(file);
+        
+        if (sheets.length === 0) {
+          ElMessage.error('Excel文件为空');
+          return;
+        }
+        
+        // 存储所有工作表信息
+        availableSheets.value = sheets;
+        
+        if (sheets.length === 1) {
+          // 只有一个工作表，直接使用
+          selectedSheet.value = sheets[0].name;
+          processExcelData(sheets[0]);
+        } else {
+          // 多个工作表，让用户选择
+          await selectExcelSheet(sheets);
+        }
+        
+      } catch (error) {
+        ElMessage.error('Excel文件解析失败: ' + error.message);
+      }
+    };
+
+    // 选择Excel工作表
+    const selectExcelSheet = async (sheets) => {
+      try {
+        const { value: selectedSheetName } = await ElMessageBox.prompt(
+          '请选择要导入的工作表',
+          '工作表选择',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            inputType: 'select',
+            inputOptions: sheets.reduce((acc, sheet, index) => {
+              acc[index] = `${sheet.name} (${sheet.rowCount}行 ${sheet.columnCount}列)`;
+              return acc;
+            }, {})
+          }
+        );
+        
+        if (selectedSheetName !== null) {
+          const selectedIndex = parseInt(selectedSheetName);
+          const selectedSheetData = sheets[selectedIndex];
+          selectedSheet.value = selectedSheetData.name;
+          processExcelData(selectedSheetData);
+        }
+      } catch (error) {
+        // 用户取消选择
+        return;
+      }
+    };
+
+    // 处理Excel数据
+    const processExcelData = (sheetData) => {
+      const { data, columns } = convertExcelToCsvFormat(sheetData.data, hasHeader.value);
+      
+      parsedData.value = data;
+      csvColumns.value = columns;
+      
+      if (parsedData.value.length === 0) {
+        ElMessage.error('Excel工作表为空');
+        return;
       }
       
-      // 解析内容的通用方法
-      function parseContent(content) {
-        Papa.parse(content, {
-          header: hasHeader.value,
-          delimiter: delimiter.value,
-          skipEmptyLines: true,
-          complete: (results) => {
-            if (results.errors.length > 0) {
-              ElMessage.error('CSV解析错误: ' + results.errors[0].message);
-              return;
-            }
-            
-            parsedData.value = results.data;
-            
-            if (hasHeader.value) {
-              csvColumns.value = results.meta.fields;
-            } else {
-              csvColumns.value = Object.keys(parsedData.value[0] || {});
-            }
-            
-            if (parsedData.value.length === 0) {
-              ElMessage.error('CSV文件为空');
-              return;
-            }
-            
-            ElMessage.success(`成功解析 ${parsedData.value.length} 条记录`);
-            
-            if (importMethod.value === 'existing' && tableColumns.value.length > 0) {
-              setupColumnMapping();
-            } else if (importMethod.value === 'auto-create') {
-              // 自动建表模式，推断字段类型
-              inferColumnTypes();
-              // 重置主键选择
-              selectedPrimaryKeys.value = [];
-              noPrimaryKey.value = false;
-            }
-            
-            currentStep.value = 1;
-          },
-          error: (error) => {
-            ElMessage.error('CSV解析失败: ' + error.message);
-          }
-        });
+      ElMessage.success(`成功解析 ${parsedData.value.length} 条记录`);
+      
+      if (importMethod.value === 'existing' && tableColumns.value.length > 0) {
+        setupColumnMapping();
+      } else if (importMethod.value === 'auto-create') {
+        // 自动建表模式，推断字段类型
+        inferColumnTypes();
+        // 重置主键选择
+        selectedPrimaryKeys.value = [];
+        noPrimaryKey.value = false;
       }
+      
+      currentStep.value = 1;
+    };
+
+    // 解析CSV文件
+    const parseCsvFile = (file) => {
+      return new Promise((resolve, reject) => {
+        // 使用FileReader根据指定编码读取文件
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+          const content = e.target.result;
+          
+          Papa.parse(content, {
+            header: hasHeader.value,
+            delimiter: delimiter.value,
+            skipEmptyLines: true,
+            complete: (results) => {
+              if (results.errors.length > 0) {
+                ElMessage.error('CSV解析错误: ' + results.errors[0].message);
+                reject(new Error(results.errors[0].message));
+                return;
+              }
+              
+              parsedData.value = results.data;
+              
+              if (hasHeader.value) {
+                csvColumns.value = results.meta.fields;
+              } else {
+                csvColumns.value = Object.keys(parsedData.value[0] || {});
+              }
+              
+              if (parsedData.value.length === 0) {
+                ElMessage.error('CSV文件为空');
+                reject(new Error('文件为空'));
+                return;
+              }
+            
+              ElMessage.success(`成功解析 ${parsedData.value.length} 条记录`);
+              
+              if (importMethod.value === 'existing' && tableColumns.value.length > 0) {
+                setupColumnMapping();
+              } else if (importMethod.value === 'auto-create') {
+                // 自动建表模式，推断字段类型
+                inferColumnTypes();
+                // 重置主键选择
+                selectedPrimaryKeys.value = [];
+                noPrimaryKey.value = false;
+              }
+              
+              currentStep.value = 1;
+              resolve();
+            },
+            error: (error) => {
+              ElMessage.error('CSV解析失败: ' + error.message);
+              reject(error);
+            }
+          });
+        };
+        
+        reader.onerror = (e) => {
+          ElMessage.error('文件读取失败，请检查文件是否完整或尝试其他编码格式');
+          reject(new Error('文件读取失败'));
+        };
+        
+        // 根据选择的编码格式读取文件
+        try {
+          if (encoding.value === 'gbk' || encoding.value === 'gb18030') {
+            // 对于GBK/GB18030编码，需要特殊处理
+            reader.readAsArrayBuffer(file);
+            reader.onload = (e) => {
+              try {
+                // 使用TextDecoder解码中文编码
+                const decoder = new TextDecoder(encoding.value);
+                const content = decoder.decode(e.target.result);
+                parseContent(content);
+              } catch (decodeError) {
+                ElMessage.error(`${encoding.value.toUpperCase()}编码解析失败，请尝试UTF-8编码: ` + decodeError.message);
+                
+                // 如果GBK失败，自动尝试GB18030
+                if (encoding.value === 'gbk') {
+                  try {
+                    const gb18030Decoder = new TextDecoder('gb18030');
+                    const content = gb18030Decoder.decode(e.target.result);
+                    parseContent(content);
+                    ElMessage.success('已自动切换到GB18030编码解析');
+                  } catch (fallbackError) {
+                    ElMessage.error('自动切换GB18030编码也失败，请手动选择UTF-8编码');
+                    reject(fallbackError);
+                  }
+                } else {
+                  reject(decodeError);
+                }
+              }
+            };
+          } else {
+            // UTF-8和ASCII编码
+            reader.readAsText(file, encoding.value);
+          }
+        } catch (error) {
+          ElMessage.error('不支持的编码格式: ' + encoding.value);
+          reject(error);
+        }
+        
+        // 解析内容的通用方法
+        function parseContent(content) {
+          Papa.parse(content, {
+            header: hasHeader.value,
+            delimiter: delimiter.value,
+            skipEmptyLines: true,
+            complete: (results) => {
+              if (results.errors.length > 0) {
+                ElMessage.error('CSV解析错误: ' + results.errors[0].message);
+                reject(new Error(results.errors[0].message));
+                return;
+              }
+              
+              parsedData.value = results.data;
+              
+              if (hasHeader.value) {
+                csvColumns.value = results.meta.fields;
+              } else {
+                csvColumns.value = Object.keys(parsedData.value[0] || {});
+              }
+              
+              if (parsedData.value.length === 0) {
+                ElMessage.error('CSV文件为空');
+                reject(new Error('文件为空'));
+                return;
+              }
+              
+              ElMessage.success(`成功解析 ${parsedData.value.length} 条记录`);
+              
+              if (importMethod.value === 'existing' && tableColumns.value.length > 0) {
+                setupColumnMapping();
+              } else if (importMethod.value === 'auto-create') {
+                // 自动建表模式，推断字段类型
+                inferColumnTypes();
+                // 重置主键选择
+                selectedPrimaryKeys.value = [];
+                noPrimaryKey.value = false;
+              }
+              
+              currentStep.value = 1;
+              resolve();
+            },
+            error: (error) => {
+              ElMessage.error('CSV解析失败: ' + error.message);
+              reject(error);
+            }
+          });
+        }
+      });
     };
 
     // 智能编码检测（支持中英文混合）
@@ -1392,6 +1536,10 @@ ${detectionDetails.join('\n')}
       csvColumnsWithTypes.value = [];
       selectedPrimaryKeys.value = [];
       noPrimaryKey.value = false;
+      // Excel相关状态重置
+      currentFileType.value = 'csv';
+      availableSheets.value = [];
+      selectedSheet.value = '';
       // 清除数据类型相关的临时变量
       if (csvColumnsWithTypes.value.length > 0) {
         csvColumnsWithTypes.value.forEach(col => {
@@ -1717,6 +1865,10 @@ ${detectionDetails.join('\n')}
       dataSources,
       tables,
       supportedDataTypes,
+      // Excel相关
+      currentFileType,
+      availableSheets,
+      selectedSheet,
       // 外键相关
       hasAnyForeignKey,
       availableTables,
