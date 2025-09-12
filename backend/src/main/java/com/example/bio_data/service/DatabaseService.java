@@ -3606,6 +3606,62 @@ public class DatabaseService {
                 logger.info("没有选择主键列，不添加主键约束");
             }
             
+            // 添加外键约束
+            List<String> foreignKeyConstraints = new ArrayList<>();
+            for (Map<String, Object> column : csvColumns) {
+                Boolean isForeignKey = (Boolean) column.get("isForeignKey");
+                if (isForeignKey != null && isForeignKey) {
+                    String columnName = sanitizeColumnName((String) column.get("columnName"));
+                    String referenceTable = (String) column.get("referenceTable");
+                    String referenceColumn = (String) column.get("referenceColumn");
+                    String onUpdate = (String) column.get("onUpdate");
+                    String onDelete = (String) column.get("onDelete");
+                    
+                    if (referenceTable != null && !referenceTable.trim().isEmpty() && 
+                        referenceColumn != null && !referenceColumn.trim().isEmpty()) {
+                        
+                        // 验证外键数据类型匹配
+                        try {
+                            validateForeignKeyDataTypeMatch(dataSourceName, dataSourceName, column, referenceTable, referenceColumn);
+                        } catch (Exception e) {
+                            logger.error("外键数据类型验证失败: {}", e.getMessage());
+                            throw new RuntimeException("外键设置有误: " + e.getMessage());
+                        }
+                        
+                        String constraintName = "fk_" + tableName + "_" + columnName;
+                        StringBuilder fkSql = new StringBuilder();
+                        fkSql.append("CONSTRAINT `").append(constraintName).append("` ");
+                        fkSql.append("FOREIGN KEY (`").append(columnName).append("`) ");
+                        
+                        // 构建引用部分
+                        if (isUserCreatedDatabase(dataSourceName)) {
+                            fkSql.append("REFERENCES `").append(dataSourceName).append("`.`").append(referenceTable).append("` ");
+                        } else {
+                            fkSql.append("REFERENCES `").append(referenceTable).append("` ");
+                        }
+                        fkSql.append("(`").append(referenceColumn).append("`)");
+                        
+                        // 添加ON UPDATE和ON DELETE选项
+                        if (onUpdate != null && !onUpdate.equals("RESTRICT")) {
+                            fkSql.append(" ON UPDATE ").append(onUpdate);
+                        }
+                        if (onDelete != null && !onDelete.equals("RESTRICT")) {
+                            fkSql.append(" ON DELETE ").append(onDelete);
+                        }
+                        
+                        foreignKeyConstraints.add(fkSql.toString());
+                        logger.info("添加外键约束: {} -> {}.{}", columnName, referenceTable, referenceColumn);
+                    }
+                }
+            }
+            
+            // 将外键约束添加到SQL中
+            if (!foreignKeyConstraints.isEmpty()) {
+                createTableSql.append(", ");
+                createTableSql.append(String.join(", ", foreignKeyConstraints));
+                logger.info("共添加 {} 个外键约束", foreignKeyConstraints.size());
+            }
+            
             createTableSql.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             
             logger.info("创建表SQL: {}", createTableSql.toString());

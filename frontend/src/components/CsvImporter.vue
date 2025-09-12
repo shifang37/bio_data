@@ -66,7 +66,7 @@
               </el-col>
               <el-col :span="12" v-if="importMethod === 'existing'">
                 <el-form-item label="目标表">
-                  <el-select v-model="selectedTable" placeholder="选择目标表" @change="loadTableColumns">
+                  <el-select v-model="selectedTable" placeholder="选择目标表" @change="loadTableColumnsForExisting">
                     <el-option
                       v-for="item in tables"
                       :key="item.TABLE_NAME"
@@ -188,9 +188,18 @@
                 show-icon
                 :closable="false"
               />
+              <el-alert
+                v-if="hasAnyForeignKey"
+                title="外键配置说明"
+                description="外键用于建立表之间的关联关系。请确保外键列的数据类型与被引用表的列数据类型完全一致，否则可能导致创建失败。系统会自动验证数据类型匹配性。"
+                type="warning"
+                show-icon
+                :closable="false"
+                style="margin-top: 10px;"
+              />
             </div>
             <el-table :data="csvColumnsWithTypes" style="width: 100%; margin-bottom: 20px;">
-              <el-table-column label="主键" width="80" align="center">
+              <el-table-column label="主键" width="60" align="center">
                 <template #default="scope">
                   <el-checkbox 
                     v-model="scope.row.isPrimaryKey"
@@ -198,13 +207,16 @@
                   />
                 </template>
               </el-table-column>
-              <el-table-column prop="columnName" label="字段名" width="200">
+              <el-table-column prop="columnName" label="字段名" width="150">
                 <template #default="scope">
                   <span>{{ scope.row.columnName }}</span>
-                  <el-tag v-if="scope.row.isPrimaryKey" type="danger" size="small" style="margin-left: 8px;">主键</el-tag>
+                  <div style="margin-top: 2px;">
+                    <el-tag v-if="scope.row.isPrimaryKey" type="danger" size="small">主键</el-tag>
+                    <el-tag v-if="scope.row.isForeignKey" type="warning" size="small" style="margin-left: 4px;">外键</el-tag>
+                  </div>
                 </template>
               </el-table-column>
-              <el-table-column label="数据类型" width="300">
+              <el-table-column label="数据类型" width="280">
                 <template #default="scope">
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <el-select 
@@ -224,16 +236,79 @@
                       v-if="scope.row.needsLength"
                       v-model="scope.row.length"
                       placeholder="长度"
-                      style="width: 80px"
+                      style="width: 70px"
                       @input="(value) => onLengthChange(scope.row, value)"
                     />
                     <el-input
                       v-if="scope.row.needsDecimals"
                       v-model="scope.row.decimals"
                       placeholder="小数位"
-                      style="width: 80px"
+                      style="width: 70px"
                       @input="(value) => onDecimalsChange(scope.row, value)"
                     />
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="外键" width="60" align="center">
+                <template #default="scope">
+                  <el-checkbox 
+                    v-model="scope.row.isForeignKey"
+                    @change="onForeignKeyChange(scope.row)"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="外键配置" width="320" v-if="hasAnyForeignKey">
+                <template #default="scope">
+                  <div v-if="scope.row.isForeignKey" style="display: flex; flex-direction: column; gap: 5px;">
+                    <el-select 
+                      v-model="scope.row.referenceTable"
+                      placeholder="选择引用表"
+                      size="small"
+                      style="width: 100%;"
+                      filterable
+                      clearable
+                      @change="onReferenceTableChange(scope.row)"
+                    >
+                      <el-option
+                        v-for="table in availableTables"
+                        :key="table.name"
+                        :label="table.name"
+                        :value="table.name"
+                      />
+                    </el-select>
+                    
+                    <el-select 
+                      v-model="scope.row.referenceColumn"
+                      placeholder="选择引用列"
+                      size="small"
+                      style="width: 100%;"
+                      :disabled="!scope.row.referenceTable"
+                      clearable
+                      filterable
+                      @change="onReferenceColumnChange(scope.row)"
+                    >
+                      <el-option
+                        v-for="column in getTableColumns(scope.row.referenceTable)"
+                        :key="column.name"
+                        :label="`${column.name} (${column.type})`"
+                        :value="column.name"
+                      />
+                    </el-select>
+                    
+                    <div style="display: flex; gap: 4px;">
+                      <el-select v-model="scope.row.onUpdate" size="small" style="width: 50%;">
+                        <template #prefix>更新:</template>
+                        <el-option label="RESTRICT" value="RESTRICT" />
+                        <el-option label="CASCADE" value="CASCADE" />
+                        <el-option label="SET NULL" value="SET NULL" />
+                      </el-select>
+                      <el-select v-model="scope.row.onDelete" size="small" style="width: 50%;">
+                        <template #prefix>删除:</template>
+                        <el-option label="CASCADE" value="CASCADE" />
+                        <el-option label="RESTRICT" value="RESTRICT" />
+                        <el-option label="SET NULL" value="SET NULL" />
+                      </el-select>
+                    </div>
                   </div>
                 </template>
               </el-table-column>
@@ -371,6 +446,16 @@
                 type="info"
                 show-icon
                 :closable="false"
+              />
+              
+              <el-alert
+                v-if="getForeignKeyColumns().length > 0"
+                :title="`已配置外键：${getForeignKeyColumns().length} 个`"
+                :description="`外键列：${getForeignKeyColumns().map(fk => `${fk.column} → ${fk.referenceTable}.${fk.referenceColumn}`).join(', ')}`"
+                type="success"
+                show-icon
+                :closable="false"
+                style="margin-top: 10px;"
               />
             </div>
           </div>
@@ -524,9 +609,18 @@ export default {
     const dataSources = ref([]);
     const tables = ref([]);
     const supportedDataTypes = ref([]);
+    
+    // 外键相关变量
+    const availableTables = ref([]);
+    const referencedTableColumns = ref({});
 
     const previewData = computed(() => {
       return parsedData.value.slice(0, 10);
+    });
+
+    // 检查是否有任何外键列
+    const hasAnyForeignKey = computed(() => {
+      return csvColumnsWithTypes.value.some(col => col.isForeignKey);
     });
 
     // 加载支持的数据类型
@@ -599,8 +693,8 @@ export default {
       }
     };
 
-    // 加载表列信息
-    const loadTableColumns = async () => {
+    // 加载表列信息（用于现有表模式）
+    const loadTableColumnsForExisting = async () => {
       if (!selectedDataSource.value || !selectedTable.value) return;
       
       try {
@@ -659,7 +753,13 @@ export default {
           needsLength: typeInfo.needsLength,
           needsDecimals: typeInfo.needsDecimals,
           sample: sample,
-          isPrimaryKey: false // 默认不是主键，由用户选择
+          isPrimaryKey: false, // 默认不是主键，由用户选择
+          // 外键相关字段
+          isForeignKey: false,
+          referenceTable: '',
+          referenceColumn: '',
+          onUpdate: 'RESTRICT',
+          onDelete: 'CASCADE'
         };
       });
     };
@@ -1300,6 +1400,12 @@ ${detectionDetails.join('\n')}
           col.decimals = null;
           col.needsLength = false;
           col.needsDecimals = false;
+          // 清除外键相关字段
+          col.isForeignKey = false;
+          col.referenceTable = '';
+          col.referenceColumn = '';
+          col.onUpdate = 'RESTRICT';
+          col.onDelete = 'CASCADE';
         });
       }
       importing.value = false;
@@ -1427,6 +1533,152 @@ ${detectionDetails.join('\n')}
       column.inferredType = typeString;
     };
 
+    // 外键改变时的处理
+    const onForeignKeyChange = (column) => {
+      if (!column.isForeignKey) {
+        // 取消外键时清空相关字段
+        column.referenceTable = '';
+        column.referenceColumn = '';
+        column.onUpdate = 'RESTRICT';
+        column.onDelete = 'CASCADE';
+      } else {
+        // 设为外键时，加载可用表列表
+        loadAvailableTables();
+      }
+    };
+
+    // 引用表改变时的处理
+    const onReferenceTableChange = (column) => {
+      // 清空引用列
+      column.referenceColumn = '';
+      
+      // 加载引用表的列
+      if (column.referenceTable && column.referenceTable.trim()) {
+        loadTableColumns(column.referenceTable);
+      }
+    };
+
+    // 引用列改变时的处理
+    const onReferenceColumnChange = (column) => {
+      // 检查数据类型匹配
+      if (column.referenceTable && column.referenceColumn) {
+        validateDataTypeMatch(column);
+      }
+    };
+
+    // 加载可用表列表
+    const loadAvailableTables = async () => {
+      if (!selectedDataSource.value) return;
+      
+      try {
+        const response = await databaseApi.getAllTables(selectedDataSource.value, props.userId, props.userType);
+        availableTables.value = response.data.map(table => ({
+          name: table.TABLE_NAME,
+          comment: table.TABLE_COMMENT
+        }));
+      } catch (error) {
+        console.error('加载可用表失败:', error);
+        ElMessage.warning('加载可用表失败: ' + error.message);
+      }
+    };
+
+    // 加载表列信息
+    const loadTableColumns = async (tableName) => {
+      if (!selectedDataSource.value || !tableName) return;
+      
+      try {
+        const response = await databaseApi.getTableColumnsInfo(
+          tableName,
+          selectedDataSource.value,
+          props.userId,
+          props.userType
+        );
+        
+        referencedTableColumns.value[tableName] = response.data.columns.map(col => ({
+          name: col.COLUMN_NAME,
+          type: col.DATA_TYPE,
+          columnType: col.COLUMN_TYPE
+        }));
+      } catch (error) {
+        console.error(`加载表 ${tableName} 的列信息失败:`, error);
+        ElMessage.warning(`加载表 ${tableName} 的列信息失败: ` + error.message);
+      }
+    };
+
+    // 获取表的列信息
+    const getTableColumns = (tableName) => {
+      if (!tableName) return [];
+      return referencedTableColumns.value[tableName] || [];
+    };
+
+    // 验证数据类型匹配
+    const validateDataTypeMatch = (column) => {
+      if (!column.referenceTable || !column.referenceColumn) return;
+      
+      const referencedColumns = getTableColumns(column.referenceTable);
+      const referencedColumn = referencedColumns.find(col => col.name === column.referenceColumn);
+      
+      if (referencedColumn) {
+        const currentType = column.dataType.toUpperCase();
+        const refType = referencedColumn.type.toUpperCase();
+        
+        // 简单的数据类型匹配检查
+        const isCompatible = checkDataTypeCompatibility(currentType, refType, column.length);
+        
+        if (!isCompatible) {
+          ElMessage.warning({
+            message: `数据类型可能不匹配：当前列类型为 ${currentType}，引用列类型为 ${refType}。建议保持数据类型一致以避免创建失败。`,
+            duration: 5000
+          });
+        }
+      }
+    };
+
+    // 检查数据类型兼容性
+    const checkDataTypeCompatibility = (currentType, refType, currentLength) => {
+      // 标准化数据类型以便比较
+      const normalizeType = (type) => {
+        if (!type) return '';
+        
+        const upperType = type.toUpperCase();
+        
+        // 对于数值类型，移除显示宽度 (如 INT(11) -> INT)
+        const numericTypes = ['TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'BIGINT'];
+        for (const numType of numericTypes) {
+          if (upperType.startsWith(numType)) {
+            return numType;
+          }
+        }
+        
+        // 对于字符类型，保留但标准化格式
+        if (upperType.startsWith('VARCHAR')) {
+          return 'VARCHAR';
+        }
+        if (upperType.startsWith('CHAR')) {
+          return 'CHAR';
+        }
+        
+        // 移除括号中的内容获取基础类型
+        const baseType = upperType.split('(')[0];
+        return baseType;
+      };
+      
+      const normalizedCurrent = normalizeType(currentType);
+      const normalizedRef = normalizeType(refType);
+      
+      return normalizedCurrent === normalizedRef;
+    };
+
+    // 获取已配置外键的列信息
+    const getForeignKeyColumns = () => {
+      return csvColumnsWithTypes.value.filter(col => col.isForeignKey && col.referenceTable && col.referenceColumn)
+        .map(col => ({
+          column: col.columnName,
+          referenceTable: col.referenceTable,
+          referenceColumn: col.referenceColumn
+        }));
+    };
+
     onMounted(() => {
       loadDataSources();
       loadSupportedDataTypes();
@@ -1465,10 +1717,14 @@ ${detectionDetails.join('\n')}
       dataSources,
       tables,
       supportedDataTypes,
+      // 外键相关
+      hasAnyForeignKey,
+      availableTables,
+      referencedTableColumns,
       previewData,
       loadDataSources,
       loadTables,
-      loadTableColumns,
+      loadTableColumnsForExisting,
       handleFileChange,
       onImportMethodChange,
       parseFile,
@@ -1483,7 +1739,16 @@ ${detectionDetails.join('\n')}
       onTableNameChange,
       onDataTypeChange,
       onLengthChange,
-      onDecimalsChange
+      onDecimalsChange,
+      // 外键相关方法
+      onForeignKeyChange,
+      onReferenceTableChange,
+      onReferenceColumnChange,
+      loadAvailableTables,
+      getTableColumns,
+      validateDataTypeMatch,
+      checkDataTypeCompatibility,
+      getForeignKeyColumns
     };
   }
 };
