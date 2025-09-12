@@ -51,6 +51,7 @@ function useWatcher(owner, props_) {
       "showOverflowTooltip",
       "tooltipFormatter"
     ];
+    const parentProps = ["showOverflowTooltip"];
     const aliases = {
       property: "prop",
       align: "realAlign",
@@ -61,6 +62,13 @@ function useWatcher(owner, props_) {
       const columnKey = aliases[key];
       if (hasOwn(props_, columnKey)) {
         watch(() => props_[columnKey], (newVal) => {
+          instance.columnConfig.value[key] = newVal;
+        });
+      }
+    });
+    parentProps.forEach((key) => {
+      if (hasOwn(owner.value.props, key)) {
+        watch(() => owner.value.props[key], (newVal) => {
           instance.columnConfig.value[key] = newVal;
         });
       }

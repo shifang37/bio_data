@@ -42,7 +42,7 @@ const ScrollBar = defineComponent({
         return ratio * trackSize.value / 100;
       }
       const SCROLLBAR_MAX_SIZE = trackSize.value / 3;
-      return Math.floor(Math.min(Math.max(ratio * trackSize.value, SCROLLBAR_MIN_SIZE), SCROLLBAR_MAX_SIZE));
+      return Math.floor(Math.min(Math.max(ratio * trackSize.value / 100, SCROLLBAR_MIN_SIZE), SCROLLBAR_MAX_SIZE));
     });
     const thumbStyle = computed(() => {
       if (!Number.isFinite(thumbSize.value)) {

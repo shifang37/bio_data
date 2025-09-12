@@ -3,7 +3,7 @@
 Object.defineProperty(exports, '__esModule', { value: true });
 
 var lodashUnified = require('lodash-unified');
-var node = require('./node.js');
+var node = require('./node2.js');
 var types = require('../../../utils/types.js');
 
 const flatNodes = (nodes, leafOnly) => {
@@ -38,7 +38,11 @@ class Store {
     this.appendAllNodesAndLeafNodes(node$1);
   }
   appendNodes(nodeDataList, parentNode) {
-    nodeDataList.forEach((nodeData) => this.appendNode(nodeData, parentNode));
+    if (nodeDataList.length > 0) {
+      nodeDataList.forEach((nodeData) => this.appendNode(nodeData, parentNode));
+    } else {
+      parentNode && parentNode.isLeaf && this.leafNodes.push(parentNode);
+    }
   }
   appendAllNodesAndLeafNodes(node) {
     this.allNodes.push(node);

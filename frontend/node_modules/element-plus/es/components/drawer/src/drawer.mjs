@@ -8,6 +8,7 @@ const drawerProps = buildProps({
     default: "rtl",
     values: ["ltr", "rtl", "ttb", "btt"]
   },
+  resizable: Boolean,
   size: {
     type: [String, Number],
     default: "30%"

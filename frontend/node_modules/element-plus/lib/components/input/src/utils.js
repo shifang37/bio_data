@@ -30,7 +30,8 @@ const CONTEXT_STYLE = [
   "padding-left",
   "padding-right",
   "border-width",
-  "box-sizing"
+  "box-sizing",
+  "word-break"
 ];
 function calculateNodeStyling(targetElement) {
   const style = window.getComputedStyle(targetElement);
@@ -44,10 +45,10 @@ function calculateNodeStyling(targetElement) {
   return { contextStyle, paddingSize, borderSize, boxSizing };
 }
 function calcTextareaHeight(targetElement, minRows = 1, maxRows) {
-  var _a;
+  var _a, _b;
   if (!hiddenTextarea) {
     hiddenTextarea = document.createElement("textarea");
-    document.body.appendChild(hiddenTextarea);
+    ((_a = targetElement.parentNode) != null ? _a : document.body).appendChild(hiddenTextarea);
   }
   const { paddingSize, borderSize, boxSizing, contextStyle } = calculateNodeStyling(targetElement);
   contextStyle.forEach(([key, value]) => hiddenTextarea == null ? void 0 : hiddenTextarea.style.setProperty(key, value));
@@ -78,7 +79,7 @@ function calcTextareaHeight(targetElement, minRows = 1, maxRows) {
     height = Math.min(maxHeight, height);
   }
   result.height = `${height}px`;
-  (_a = hiddenTextarea.parentNode) == null ? void 0 : _a.removeChild(hiddenTextarea);
+  (_b = hiddenTextarea.parentNode) == null ? void 0 : _b.removeChild(hiddenTextarea);
   hiddenTextarea = void 0;
   return result;
 }

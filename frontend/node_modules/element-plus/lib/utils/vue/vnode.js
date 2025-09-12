@@ -4,9 +4,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
 var vue = require('vue');
 var shared = require('@vue/shared');
-var error = require('../error.js');
 
-const SCOPE = "utils/vue/vnode";
 var PatchFlags = /* @__PURE__ */ ((PatchFlags2) => {
   PatchFlags2[PatchFlags2["TEXT"] = 1] = "TEXT";
   PatchFlags2[PatchFlags2["CLASS"] = 2] = "CLASS";
@@ -62,7 +60,6 @@ function renderBlock(...args) {
 }
 const getNormalizedProps = (node) => {
   if (!vue.isVNode(node)) {
-    error.debugWarn(SCOPE, "[getNormalizedProps] must be a VNode");
     return {};
   }
   const raw = node.props || {};

@@ -6,9 +6,7 @@ var types = require('../types.js');
 var core = require('@vueuse/core');
 var shared = require('@vue/shared');
 var objects = require('../objects.js');
-var error = require('../error.js');
 
-const SCOPE = "utils/dom/style";
 const classNameToArray = (cls = "") => cls.split(" ").filter((item) => !!item.trim());
 const hasClass = (el, cls) => {
   if (!el || !cls)
@@ -71,7 +69,6 @@ function addUnit(value, defaultUnit = "px") {
   } else if (shared.isString(value)) {
     return value;
   }
-  error.debugWarn(SCOPE, "binding value must be a string or number");
 }
 
 exports.addClass = addClass;

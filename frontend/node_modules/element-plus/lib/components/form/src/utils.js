@@ -5,9 +5,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
 var vue = require('vue');
 var lodashUnified = require('lodash-unified');
 var shared = require('@vue/shared');
-var error = require('../../../utils/error.js');
 
-const SCOPE = "ElForm";
 function useFormLabelWidth() {
   const potentialLabelWidthArr = vue.ref([]);
   const autoLabelWidth = vue.computed(() => {
@@ -18,9 +16,7 @@ function useFormLabelWidth() {
   });
   function getLabelWidthIndex(width) {
     const index = potentialLabelWidthArr.value.indexOf(width);
-    if (index === -1 && autoLabelWidth.value === "0") {
-      error.debugWarn(SCOPE, `unexpected width ${width}`);
-    }
+    if (index === -1 && autoLabelWidth.value === "0") ;
     return index;
   }
   function registerLabelWidth(val, oldVal) {

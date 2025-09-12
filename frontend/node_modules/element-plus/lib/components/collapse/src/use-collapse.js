@@ -54,7 +54,6 @@ const useCollapse = (props, emit) => {
           handleChange(name);
         }
       }).catch((e) => {
-        error.debugWarn(SCOPE, `some error occurred: ${e}`);
       });
     } else if (shouldChange) {
       handleChange(name);

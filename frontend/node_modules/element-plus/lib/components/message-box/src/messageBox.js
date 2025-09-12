@@ -7,7 +7,6 @@ var index = require('./index.js');
 var core = require('@vueuse/core');
 var shared = require('@vue/shared');
 var types = require('../../../utils/types.js');
-var error = require('../../../utils/error.js');
 
 const messageInstance = /* @__PURE__ */ new Map();
 const getAppendToElement = (props) => {
@@ -20,7 +19,6 @@ const getAppendToElement = (props) => {
       appendTo = props.appendTo;
     }
     if (!types.isElement(appendTo)) {
-      error.debugWarn("ElMessageBox", "the appendTo option is not an HTMLElement. Falling back to document.body.");
       appendTo = document.body;
     }
   }

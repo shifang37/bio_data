@@ -2,7 +2,9 @@ import { defineComponent, watch, renderSlot } from 'vue';
 import { provideGlobalConfig } from './hooks/use-global-config.mjs';
 import { configProviderProps } from './config-provider-props.mjs';
 
-const messageConfig = {};
+const messageConfig = {
+  placement: "top"
+};
 const ConfigProvider = defineComponent({
   name: "ElConfigProvider",
   props: configProviderProps,

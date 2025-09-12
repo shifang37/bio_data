@@ -10,6 +10,7 @@ const useDraggable = (targetRef, dragRef, draggable, overflow) => {
     offsetX: 0,
     offsetY: 0
   };
+  const isDragging = vue.ref(false);
   const adjustPosition = (moveX, moveY) => {
     if (targetRef.value) {
       const { offsetX, offsetY } = transform;
@@ -38,11 +39,15 @@ const useDraggable = (targetRef, dragRef, draggable, overflow) => {
     const downY = e.clientY;
     const { offsetX, offsetY } = transform;
     const onMousemove = (e2) => {
+      if (!isDragging.value) {
+        isDragging.value = true;
+      }
       const moveX = offsetX + e2.clientX - downX;
       const moveY = offsetY + e2.clientY - downY;
       adjustPosition(moveX, moveY);
     };
     const onMouseup = () => {
+      isDragging.value = false;
       document.removeEventListener("mousemove", onMousemove);
       document.removeEventListener("mouseup", onMouseup);
     };
@@ -85,6 +90,7 @@ const useDraggable = (targetRef, dragRef, draggable, overflow) => {
     offDraggable();
   });
   return {
+    isDragging,
     resetPosition,
     updatePosition
   };

@@ -40,6 +40,10 @@ const useButton = (props, emit) => {
     var _a, _b, _c;
     return (_c = (_b = props.round) != null ? _b : (_a = globalConfig.value) == null ? void 0 : _a.round) != null ? _c : false;
   });
+  const _text = vue.computed(() => {
+    var _a, _b, _c;
+    return (_c = (_b = props.text) != null ? _b : (_a = globalConfig.value) == null ? void 0 : _a.text) != null ? _c : false;
+  });
   const _props = vue.computed(() => {
     if (props.tag === "button") {
       return {
@@ -81,6 +85,7 @@ const useButton = (props, emit) => {
     _props,
     _plain,
     _round,
+    _text,
     shouldAddSpace,
     handleClick
   };

@@ -5,7 +5,6 @@ Object.defineProperty(exports, '__esModule', { value: true });
 var vue = require('vue');
 var runtime = require('../../utils/vue/props/runtime.js');
 var shared = require('@vue/shared');
-var error = require('../../utils/error.js');
 
 const emptyValuesContextKey = Symbol("emptyValuesContextKey");
 const SCOPE = "use-empty-values";
@@ -14,7 +13,12 @@ const DEFAULT_VALUE_ON_CLEAR = void 0;
 const useEmptyValuesProps = runtime.buildProps({
   emptyValues: Array,
   valueOnClear: {
-    type: [String, Number, Boolean, Function],
+    type: runtime.definePropType([
+      String,
+      Number,
+      Boolean,
+      Function
+    ]),
     default: void 0,
     validator: (val) => shared.isFunction(val) ? !val() : !val
   }
@@ -37,9 +41,7 @@ const useEmptyValues = (props, defaultValue) => {
   const isEmptyValue = (value) => {
     return emptyValues.value.includes(value);
   };
-  if (!emptyValues.value.includes(valueOnClear.value)) {
-    error.debugWarn(SCOPE, "value-on-clear should be a value of empty-values");
-  }
+  if (!emptyValues.value.includes(valueOnClear.value)) ;
   return {
     emptyValues,
     valueOnClear,

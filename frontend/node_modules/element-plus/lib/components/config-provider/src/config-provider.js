@@ -6,7 +6,9 @@ var vue = require('vue');
 var useGlobalConfig = require('./hooks/use-global-config.js');
 var configProviderProps = require('./config-provider-props.js');
 
-const messageConfig = {};
+const messageConfig = {
+  placement: "top"
+};
 const ConfigProvider = vue.defineComponent({
   name: "ElConfigProvider",
   props: configProviderProps.configProviderProps,

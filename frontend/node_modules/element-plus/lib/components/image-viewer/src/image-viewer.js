@@ -40,10 +40,7 @@ const imageViewerProps = runtime.buildProps({
     type: Number,
     default: 7
   },
-  showProgress: {
-    type: Boolean,
-    default: false
-  },
+  showProgress: Boolean,
   crossorigin: {
     type: runtime.definePropType(String)
   }

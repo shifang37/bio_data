@@ -25,6 +25,20 @@ const useFormItemInputId = (props, {
   if (!disableIdManagement) {
     disableIdManagement = vue.ref(false);
   }
+  const instance = vue.getCurrentInstance();
+  const inLabel = () => {
+    let parent = instance == null ? void 0 : instance.parent;
+    while (parent) {
+      if (parent.type.name === "ElFormItem") {
+        return false;
+      }
+      if (parent.type.name === "ElLabelWrap") {
+        return true;
+      }
+      parent = parent.parent;
+    }
+    return false;
+  };
   const inputId = vue.ref();
   let idUnwatch = void 0;
   const isLabeledByFormItem = vue.computed(() => {
@@ -35,7 +49,7 @@ const useFormItemInputId = (props, {
     idUnwatch = vue.watch([vue.toRef(props, "id"), disableIdGeneration], ([id, disableIdGeneration2]) => {
       const newId = id != null ? id : !disableIdGeneration2 ? index.useId().value : void 0;
       if (newId !== inputId.value) {
-        if (formItemContext == null ? void 0 : formItemContext.removeInputId) {
+        if ((formItemContext == null ? void 0 : formItemContext.removeInputId) && !inLabel()) {
           inputId.value && formItemContext.removeInputId(inputId.value);
           if (!(disableIdManagement == null ? void 0 : disableIdManagement.value) && !disableIdGeneration2 && newId) {
             formItemContext.addInputId(newId);

@@ -46,7 +46,7 @@ const ScrollBar = vue.defineComponent({
         return ratio * trackSize.value / 100;
       }
       const SCROLLBAR_MAX_SIZE = trackSize.value / 3;
-      return Math.floor(Math.min(Math.max(ratio * trackSize.value, defaults.SCROLLBAR_MIN_SIZE), SCROLLBAR_MAX_SIZE));
+      return Math.floor(Math.min(Math.max(ratio * trackSize.value / 100, defaults.SCROLLBAR_MIN_SIZE), SCROLLBAR_MAX_SIZE));
     });
     const thumbStyle = vue.computed(() => {
       if (!Number.isFinite(thumbSize.value)) {

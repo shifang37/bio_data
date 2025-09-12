@@ -40,7 +40,8 @@ const useSlide = (props, initData, emit) => {
   });
   const resetSize = () => {
     if (slider.value) {
-      initData.sliderSize = slider.value[`client${props.vertical ? "Height" : "Width"}`];
+      const rect = slider.value.getBoundingClientRect();
+      initData.sliderSize = rect[props.vertical ? "height" : "width"];
     }
   };
   const getButtonRefByPercent = (percent) => {

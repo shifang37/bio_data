@@ -1,5 +1,5 @@
 import { isEqual } from 'lodash-unified';
-import Node from './node.mjs';
+import Node from './node2.mjs';
 import { isPropAbsent } from '../../../utils/types.mjs';
 
 const flatNodes = (nodes, leafOnly) => {
@@ -34,7 +34,11 @@ class Store {
     this.appendAllNodesAndLeafNodes(node);
   }
   appendNodes(nodeDataList, parentNode) {
-    nodeDataList.forEach((nodeData) => this.appendNode(nodeData, parentNode));
+    if (nodeDataList.length > 0) {
+      nodeDataList.forEach((nodeData) => this.appendNode(nodeData, parentNode));
+    } else {
+      parentNode && parentNode.isLeaf && this.leafNodes.push(parentNode);
+    }
   }
   appendAllNodesAndLeafNodes(node) {
     this.allNodes.push(node);
