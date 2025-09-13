@@ -164,7 +164,7 @@
                   <!-- 字段值搜索框 -->
                   <el-input
                     v-model="fieldSearchQuery"
-                    placeholder="按字段值搜索..."
+                    placeholder="按字段值搜索（智能模式）..."
                     style="width: 200px;"
                     clearable
                     @keyup.enter="searchTablesByFieldValue"
@@ -174,28 +174,39 @@
                     </template>
                   </el-input>
                   
-                  <!-- 搜索模式选择器 -->
-                  <el-select 
-                    v-model="searchMode" 
-                    style="width: 120px;" 
-                    size="small"
-                    title="选择搜索模式：智能模式会根据搜索内容自动判断，文本模式仅搜索文本字段（适合蛋白质名称），数字模式仅搜索数字字段"
-                  >
-                    <el-option label="智能模式" value="auto" />
-                    <el-option label="仅文本字段" value="text_only" />
-                    <el-option label="仅数字字段" value="numeric_only" />
-                    <el-option label="全部字段" value="all" />
-                  </el-select>
-                  
-                  <el-button 
-                    type="primary" 
-                    @click="searchTablesByFieldValue" 
+                  <!-- 搜索类型下拉选择器 -->
+                  <el-dropdown 
+                    @command="handleSearchCommand"
                     :loading="fieldSearching"
                     size="small"
-                    title="搜索结果可以最小化保留，切换数据库不会影响"
                   >
-                    字段搜索
-                  </el-button>
+                    <el-button 
+                      type="primary" 
+                      size="small"
+                      :loading="fieldSearching"
+                    >
+                      字段搜索
+                      <el-icon class="el-icon--right"><arrow-down /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item 
+                          command="fuzzy"
+                          :icon="Search"
+                        >
+                          模糊搜索
+                          <span style="color: #999; font-size: 12px; margin-left: 8px;">(包含搜索值)</span>
+                        </el-dropdown-item>
+                        <el-dropdown-item 
+                          command="exact"
+                          :icon="Aim"
+                        >
+                          精确搜索
+                          <span style="color: #999; font-size: 12px; margin-left: 8px;">(完全匹配)</span>
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                   
                   <!-- 表名搜索框 -->
                   <el-input
@@ -1332,23 +1343,24 @@
             <p><strong>数据库：</strong>{{ getSelectedDatabaseInfo()?.displayName || selectedDatabase }}</p>
             <p><strong>搜索模式：</strong>
               <el-tag 
-                :type="searchMode === 'auto' ? 'primary' : searchMode === 'text_only' ? 'success' : searchMode === 'numeric_only' ? 'warning' : 'info'" 
+                type="primary" 
                 size="small"
               >
-                {{ 
-                  searchMode === 'auto' ? '智能模式' : 
-                  searchMode === 'text_only' ? '仅文本字段' : 
-                  searchMode === 'numeric_only' ? '仅数字字段' : 
-                  '全部字段' 
-                }}
+                智能模式
               </el-tag>
               <span style="color: #666; font-size: 12px; margin-left: 8px;">
-                {{ 
-                  searchMode === 'auto' ? '(根据搜索内容自动判断)' : 
-                  searchMode === 'text_only' ? '(适合蛋白质名称等文本搜索)' : 
-                  searchMode === 'numeric_only' ? '(仅搜索数字类型字段)' : 
-                  '(搜索所有字段类型)' 
-                }}
+                (根据搜索内容自动判断)
+              </span>
+            </p>
+            <p><strong>搜索类型：</strong>
+              <el-tag 
+                :type="currentSearchType === 'fuzzy' ? 'success' : 'warning'" 
+                size="small"
+              >
+                {{ currentSearchType === 'fuzzy' ? '模糊搜索' : '精确搜索' }}
+              </el-tag>
+              <span style="color: #666; font-size: 12px; margin-left: 8px;">
+                {{ currentSearchType === 'fuzzy' ? '(包含搜索值)' : '(完全匹配)' }}
               </span>
             </p>
           </div>
@@ -1391,7 +1403,7 @@
 <script>
 import { ref, onMounted, onUnmounted, computed, onActivated, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Search, Coin, Folder, FolderOpened, Refresh, Plus, Minus, Loading } from '@element-plus/icons-vue'
+import { Delete, Edit, Search, Coin, Folder, FolderOpened, Refresh, Plus, Minus, Loading, ArrowDown, Aim } from '@element-plus/icons-vue'
 import api, { userState, checkPermission, databaseApi } from '../utils/api'
 import searchDialogsState from '../utils/searchDialogsStore'
 import { useRoute } from 'vue-router'
@@ -1408,7 +1420,9 @@ export default {
     Refresh,
     Plus,
     Minus,
-    Loading
+    Loading,
+    ArrowDown,
+    Aim
   },
   setup() {
     const route = useRoute()
@@ -1438,6 +1452,7 @@ export default {
     // 字段值搜索相关的响应式变量
     const fieldSearchQuery = ref('')
     const searchMode = ref('auto') // 搜索模式：auto, text_only, numeric_only, all
+    const currentSearchType = ref('fuzzy') // 当前搜索类型：fuzzy, exact
     const fieldSearching = ref(false)
     const fieldSearchResult = ref({})
     const fieldSearchError = ref('')
@@ -1988,7 +2003,9 @@ export default {
           page: pagination.value.currentPage,
           size: pagination.value.pageSize,
           userId: userInfo.userId,
-          userType: userInfo.userType
+          userType: userInfo.userType,
+          searchMode: 'auto',
+          searchType: currentSearchType.value || 'fuzzy'
         },
         timeout: 600000 // 10分钟超时
       })
@@ -2026,7 +2043,12 @@ export default {
     }
 
     // 字段值搜索相关方法
-    const searchTablesByFieldValue = async () => {
+    const handleSearchCommand = (command) => {
+      // command 为 'fuzzy' 或 'exact'
+      searchTablesByFieldValue(command)
+    }
+
+    const searchTablesByFieldValue = async (searchType = 'fuzzy') => {
       if (!fieldSearchQuery.value.trim()) {
         fieldSearchError.value = '搜索值不能为空'
         return
@@ -2039,6 +2061,9 @@ export default {
         return
       }
 
+      // 更新当前搜索类型
+      currentSearchType.value = searchType
+
       // 立即显示进度弹窗
       showSearchProgressDialog(fieldSearchQuery.value.trim())
 
@@ -2047,8 +2072,8 @@ export default {
       fieldSearchResult.value = {}
 
       try {
-        // 使用SSE接收实时进度，传递搜索模式参数
-        await startRealTimeSearch(fieldSearchQuery.value, selectedDatabase.value, userInfo.userId, userInfo.userType, searchMode.value)
+        // 使用SSE接收实时进度，默认使用智能模式
+        await startRealTimeSearch(fieldSearchQuery.value, selectedDatabase.value, userInfo.userId, userInfo.userType, 'auto', searchType)
       } catch (error) {
         closeSearchProgressDialog()
         
@@ -2127,7 +2152,7 @@ export default {
     }
 
     // SSE实时搜索方法
-    const startRealTimeSearch = (searchValue, dataSource, userId, userType, searchMode = 'auto') => {
+    const startRealTimeSearch = (searchValue, dataSource, userId, userType, searchMode = 'auto', searchType = 'fuzzy') => {
       return new Promise((resolve, reject) => {
         const baseUrl = api.defaults.baseURL || ''
         const url = `${baseUrl}/api/database/search/tables-by-value-progress?` + new URLSearchParams({
@@ -2135,7 +2160,8 @@ export default {
           dataSource,
           userId: userId.toString(),
           userType,
-          searchMode
+          searchMode,
+          searchType
         })
 
         const eventSource = new EventSource(url)
@@ -4021,10 +4047,12 @@ export default {
       // 字段搜索相关
       fieldSearchQuery,
       searchMode,
+      currentSearchType,
       fieldSearching,
       fieldSearchResult,
       fieldSearchError,
       fieldSearchResultDialogVisible,
+      handleSearchCommand,
       searchTablesByFieldValue,
       viewSearchResultData,
       clearFieldSearch,

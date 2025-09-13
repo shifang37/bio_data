@@ -15,11 +15,15 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api/database")
 @CrossOrigin(origins = {"http://localhost:3000", "http://localhost:8081"})
 public class DatabaseController {
+
+    private static final Logger logger = LoggerFactory.getLogger(DatabaseController.class);
 
     @Autowired
     private DatabaseService databaseService;
@@ -271,12 +275,17 @@ public class DatabaseController {
             @RequestParam(required = false) String dataSource,
             @RequestParam(required = false) Long userId,
             @RequestParam(required = false) String userType,
-            @RequestParam(required = false, defaultValue = "auto") String searchMode) {
+            @RequestParam(required = false, defaultValue = "auto") String searchMode,
+            @RequestParam(required = false, defaultValue = "fuzzy") String searchType) {
         
         // 基本参数验证
         if (searchValue == null || searchValue.trim().isEmpty()) {
             throw new IllegalArgumentException("搜索值不能为空");
         }
+        
+        // 添加调试日志
+        logger.info("=== 控制器接收参数 ===");
+        logger.info("searchValue: '{}', searchMode: '{}', searchType: '{}'", searchValue, searchMode, searchType);
         
         // 权限验证
         ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
@@ -291,9 +300,9 @@ public class DatabaseController {
         CompletableFuture.runAsync(() -> {
             try {
                 if (dataSource != null && !dataSource.trim().isEmpty()) {
-                    databaseService.findTablesByValueWithProgress(dataSource, searchValue, searchMode, emitter);
+                    databaseService.findTablesByValueWithProgress(dataSource, searchValue, searchMode, searchType, emitter);
                 } else {
-                    databaseService.findTablesByValueWithProgress(null, searchValue, searchMode, emitter);
+                    databaseService.findTablesByValueWithProgress(null, searchValue, searchMode, searchType, emitter);
                 }
             } catch (Exception e) {
                 try {
@@ -323,7 +332,9 @@ public class DatabaseController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String dataSource,
             @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) String userType) {
+            @RequestParam(required = false) String userType,
+            @RequestParam(required = false, defaultValue = "auto") String searchMode,
+            @RequestParam(required = false, defaultValue = "fuzzy") String searchType) {
         try {
             // 基本参数验证
             if (tableName == null || tableName.trim().isEmpty()) {
@@ -348,9 +359,9 @@ public class DatabaseController {
                 if (page < 1) page = 1;
                 
                 if (dataSource != null && !dataSource.trim().isEmpty()) {
-                    result = databaseService.getTableDataByValueWithPagination(dataSource, tableName, searchValue, page, size);
+                    result = databaseService.getTableDataByValueWithPagination(dataSource, tableName, searchValue, page, size, searchMode, searchType);
                 } else {
-                    result = databaseService.getTableDataByValueWithPagination(null, tableName, searchValue, page, size);
+                    result = databaseService.getTableDataByValueWithPagination(null, tableName, searchValue, page, size, searchMode, searchType);
                 }
             } else {
                 // 传统limit模式，保持向后兼容

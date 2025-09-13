@@ -296,6 +296,14 @@ public class DatabaseService {
      * 搜索全部表的全部数据，提供完整的搜索结果
      */
     public List<Map<String, Object>> findTablesByValue(String dataSourceName, String searchValue, String searchMode) {
+        return findTablesByValue(dataSourceName, searchValue, searchMode, "fuzzy");
+    }
+    
+    /**
+     * 按字段值搜索表（完整搜索版本，支持搜索模式和搜索类型）
+     * 搜索全部表的全部数据，提供完整的搜索结果
+     */
+    public List<Map<String, Object>> findTablesByValue(String dataSourceName, String searchValue, String searchMode, String searchType) {
         if (searchValue == null || searchValue.trim().isEmpty()) {
             throw new IllegalArgumentException("搜索值不能为空");
         }
@@ -331,13 +339,13 @@ public class DatabaseService {
                 logger.info("正在搜索表 {} ({}/{})", tableName, searchedCount, allTables.size());
                 
                 try {
-                    // 检查表是否包含匹配值（支持搜索模式）
-                    boolean hasMatch = checkTableForValueWithMode(dataSourceName, tableName, searchValue, searchMode);
+                    // 检查表是否包含匹配值（支持搜索模式和搜索类型）
+                    boolean hasMatch = checkTableForValueWithMode(dataSourceName, tableName, searchValue, searchMode, searchType);
                     
                     if (hasMatch) {
                         foundCount++;
                         // 获取匹配记录的准确数量
-                        int actualCount = getActualMatchCountWithMode(dataSourceName, tableName, searchValue, searchMode);
+                        int actualCount = getActualMatchCountWithMode(dataSourceName, tableName, searchValue, searchMode, searchType);
                         
                         Map<String, Object> resultTable = new HashMap<>();
                         resultTable.put("TABLE_NAME", tableName);
@@ -392,8 +400,18 @@ public class DatabaseService {
     
     /**
      * 检查表中是否包含指定值（支持搜索模式）
+     * @deprecated 使用 checkTableForValueWithMode(String, String, String, String, String) 替代
      */
+    @Deprecated
+    @SuppressWarnings("unused")
     private boolean checkTableForValueWithMode(String dataSourceName, String tableName, String searchValue, String searchMode) {
+        return checkTableForValueWithMode(dataSourceName, tableName, searchValue, searchMode, "fuzzy");
+    }
+    
+    /**
+     * 检查表中是否包含指定值（支持搜索模式和搜索类型）
+     */
+    private boolean checkTableForValueWithMode(String dataSourceName, String tableName, String searchValue, String searchMode, String searchType) {
         try {
             // 获取表的所有字段信息
             List<Map<String, Object>> columns = getTableColumns(dataSourceName, tableName);
@@ -422,31 +440,8 @@ public class DatabaseService {
                     whereClause.append(" OR ");
                 }
                 
-                // 根据数据类型构建不同的搜索条件
-                if (isNumericType(dataType)) {
-                    // 数值类型：尝试等值匹配和字符串匹配
-                    try {
-                        if (isInteger(searchValue)) {
-                            whereClause.append("(`").append(columnName).append("` = ? OR CAST(`").append(columnName).append("` AS CHAR) LIKE ?)");
-                            params.add(Long.parseLong(searchValue));
-                            params.add("%" + searchValue + "%");
-                        } else if (isDecimal(searchValue)) {
-                            whereClause.append("(`").append(columnName).append("` = ? OR CAST(`").append(columnName).append("` AS CHAR) LIKE ?)");
-                            params.add(Double.parseDouble(searchValue));
-                            params.add("%" + searchValue + "%");
-                        } else {
-                            whereClause.append("CAST(`").append(columnName).append("` AS CHAR) LIKE ?");
-                            params.add("%" + searchValue + "%");
-                        }
-                    } catch (NumberFormatException e) {
-                        whereClause.append("CAST(`").append(columnName).append("` AS CHAR) LIKE ?");
-                        params.add("%" + searchValue + "%");
-                    }
-                } else {
-                    // 字符串类型：使用LIKE模糊匹配，确保字符集兼容性
-                    whereClause.append("CAST(`").append(columnName).append("` AS CHAR CHARACTER SET utf8) COLLATE utf8_general_ci LIKE ?");
-                    params.add("%" + searchValue + "%");
-                }
+                // 使用新的搜索条件构建方法
+                buildSearchCondition(whereClause, params, columnName, dataType, searchValue, searchType);
             }
             
             if (whereClause.length() == 0) {
@@ -587,11 +582,21 @@ public class DatabaseService {
     
     /**
      * 获取匹配记录的准确数量（支持搜索模式）并同时建立搜索缓存
+     * @deprecated 使用 getActualMatchCountWithMode(String, String, String, String, String) 替代
      */
+    @Deprecated
+    @SuppressWarnings("unused")
     private int getActualMatchCountWithMode(String dataSourceName, String tableName, String searchValue, String searchMode) {
+        return getActualMatchCountWithMode(dataSourceName, tableName, searchValue, searchMode, "fuzzy");
+    }
+    
+    /**
+     * 获取匹配记录的准确数量（支持搜索模式和搜索类型）并同时建立搜索缓存
+     */
+    private int getActualMatchCountWithMode(String dataSourceName, String tableName, String searchValue, String searchMode, String searchType) {
         try {
-            // 缓存键包含搜索模式，以区分不同模式的搜索结果
-            String cacheKey = searchValue + "_mode_" + searchMode;
+            // 缓存键包含搜索模式和搜索类型，以区分不同模式和类型的搜索结果
+            String cacheKey = searchValue + "_mode_" + searchMode + "_type_" + searchType;
             SearchCacheService.SearchCacheEntry cacheEntry = searchCacheService.getSearchCache(dataSourceName, tableName, cacheKey);
             if (cacheEntry != null) {
                 logger.debug("从缓存中获取表 {} 的匹配记录数 (模式: {}): {}", tableName, searchMode, cacheEntry.getTotalCount());
@@ -625,27 +630,8 @@ public class DatabaseService {
                     whereClause.append(" OR ");
                 }
                 
-                // 根据数据类型构建不同的搜索条件，与getTableDataByValueWithPagination保持一致
-                if (isNumericType(dataType)) {
-                    try {
-                        if (isInteger(searchValue)) {
-                            whereClause.append("`").append(columnName).append("` = ?");
-                            params.add(Long.parseLong(searchValue));
-                        } else if (isDecimal(searchValue)) {
-                            whereClause.append("`").append(columnName).append("` = ?");
-                            params.add(Double.parseDouble(searchValue));
-                        } else {
-                            whereClause.append("CAST(`").append(columnName).append("` AS CHAR) LIKE ?");
-                            params.add("%" + searchValue + "%");
-                        }
-                    } catch (NumberFormatException e) {
-                        whereClause.append("CAST(`").append(columnName).append("` AS CHAR) LIKE ?");
-                        params.add("%" + searchValue + "%");
-                    }
-                } else {
-                    whereClause.append("CAST(`").append(columnName).append("` AS CHAR CHARACTER SET utf8) COLLATE utf8_general_ci LIKE ?");
-                    params.add("%" + searchValue + "%");
-                }
+                // 使用统一的搜索条件构建方法
+                buildSearchCondition(whereClause, params, columnName, dataType, searchValue, searchType);
             }
             
             String countSql;
@@ -663,6 +649,7 @@ public class DatabaseService {
             
             Integer count = jdbcTemplate.queryForObject(countSql, Integer.class, params.toArray());
             int finalCount = count != null ? count : 0;
+            
             
             // 将搜索条件和结果缓存起来，以便后续快速分页
             searchCacheService.putSearchCache(dataSourceName, tableName, cacheKey, whereClause.toString(), params, finalCount);
@@ -781,6 +768,13 @@ public class DatabaseService {
      * 根据字段值获取表中包含该值的数据记录（分页版本，带缓存优化）
      */
     public Map<String, Object> getTableDataByValueWithPagination(String dataSourceName, String tableName, String searchValue, int page, int size) {
+        return getTableDataByValueWithPagination(dataSourceName, tableName, searchValue, page, size, "auto", "fuzzy");
+    }
+    
+    /**
+     * 根据字段值获取表中包含该值的数据记录（分页版本，带缓存优化，支持搜索模式和搜索类型）
+     */
+    public Map<String, Object> getTableDataByValueWithPagination(String dataSourceName, String tableName, String searchValue, int page, int size, String searchMode, String searchType) {
         if (tableName == null || tableName.trim().isEmpty()) {
             throw new IllegalArgumentException("表名不能为空");
         }
@@ -800,8 +794,9 @@ public class DatabaseService {
         int offset = (page - 1) * size;
         
         try {
-            // 尝试从缓存获取搜索条件和总记录数
-            SearchCacheService.SearchCacheEntry cacheEntry = searchCacheService.getSearchCache(dataSourceName, tableName, searchValue);
+            // 尝试从缓存获取搜索条件和总记录数，缓存键包含搜索模式和搜索类型
+            String cacheKey = searchValue + "_mode_" + searchMode + "_type_" + searchType;
+            SearchCacheService.SearchCacheEntry cacheEntry = searchCacheService.getSearchCache(dataSourceName, tableName, cacheKey);
             
             String whereClause;
             List<Object> params;
@@ -820,6 +815,9 @@ public class DatabaseService {
                 // 获取表的所有字段信息
                 List<Map<String, Object>> columns = getTableColumns(dataSourceName, tableName);
                 
+                // 根据搜索模式过滤字段
+                columns = filterColumnsBySearchMode(columns, searchMode, searchValue);
+                
                 // 构建动态搜索SQL
                 StringBuilder whereClauseBuilder = new StringBuilder();
                 params = new ArrayList<>();
@@ -833,29 +831,8 @@ public class DatabaseService {
                         whereClauseBuilder.append(" OR ");
                     }
                     
-                    // 根据数据类型构建不同的搜索条件
-                    if (isNumericType(dataType)) {
-                        // 数值类型：尝试等值匹配
-                        try {
-                            if (isInteger(searchValue)) {
-                                whereClauseBuilder.append("`").append(columnName).append("` = ?");
-                                params.add(Long.parseLong(searchValue));
-                            } else if (isDecimal(searchValue)) {
-                                whereClauseBuilder.append("`").append(columnName).append("` = ?");
-                                params.add(Double.parseDouble(searchValue));
-                            } else {
-                                whereClauseBuilder.append("CAST(`").append(columnName).append("` AS CHAR) LIKE ?");
-                                params.add("%" + searchValue + "%");
-                            }
-                        } catch (NumberFormatException e) {
-                            whereClauseBuilder.append("CAST(`").append(columnName).append("` AS CHAR) LIKE ?");
-                            params.add("%" + searchValue + "%");
-                        }
-                    } else {
-                        // 字符串类型：使用LIKE模糊匹配
-                        whereClauseBuilder.append("CAST(`").append(columnName).append("` AS CHAR CHARACTER SET utf8) COLLATE utf8_general_ci LIKE ?");
-                        params.add("%" + searchValue + "%");
-                    }
+                    // 根据搜索类型构建不同的搜索条件
+                    buildSearchCondition(whereClauseBuilder, params, columnName, dataType, searchValue, searchType);
                 }
                 
                 whereClause = whereClauseBuilder.toString();
@@ -876,8 +853,8 @@ public class DatabaseService {
                 
                 totalCount = jdbcTemplate.queryForObject(countSql, Integer.class, params.toArray());
                 
-                // 缓存搜索条件和总记录数
-                searchCacheService.putSearchCache(dataSourceName, tableName, searchValue, whereClause, params, totalCount);
+                // 缓存搜索条件和总记录数，使用包含搜索类型的缓存键
+                searchCacheService.putSearchCache(dataSourceName, tableName, cacheKey, whereClause, params, totalCount);
             }
             
             // 执行分页查询
@@ -899,7 +876,16 @@ public class DatabaseService {
             sqlParams.add(offset);
             sqlParams.add(size);
             
+            // 添加调试日志
+            logger.info("=== 精确搜索调试信息 ===");
+            logger.info("搜索类型: {}, 搜索值: '{}'", searchType, searchValue);
+            logger.info("WHERE子句: {}", whereClause);
+            logger.info("SQL参数: {}", sqlParams);
+            logger.info("完整SQL: {}", sql);
+            
             List<Map<String, Object>> data = jdbcTemplate.queryForList(sql, sqlParams.toArray());
+            logger.info("SQL查询返回 {} 条记录", data.size());
+            
             
             // 计算总页数
             int totalPages = (int) Math.ceil((double) (totalCount != null ? totalCount : 0) / size);
@@ -924,6 +910,65 @@ public class DatabaseService {
         }
     }
     
+
+    /**
+     * 根据搜索类型构建搜索条件
+     */
+    private void buildSearchCondition(StringBuilder whereClause, List<Object> params, 
+                                    String columnName, String dataType, String searchValue, String searchType) {
+        if ("exact".equals(searchType)) {
+            // 精确搜索：完全匹配
+            if (isNumericType(dataType)) {
+                // 数值类型：精确匹配
+                try {
+                    if (isInteger(searchValue)) {
+                        whereClause.append("`").append(columnName).append("` = ?");
+                        params.add(Long.parseLong(searchValue));
+                    } else if (isDecimal(searchValue)) {
+                        whereClause.append("`").append(columnName).append("` = ?");
+                        params.add(Double.parseDouble(searchValue));
+                    } else {
+                        whereClause.append("CAST(`").append(columnName).append("` AS CHAR) = ?");
+                        params.add(searchValue);
+                    }
+                } catch (NumberFormatException e) {
+                    whereClause.append("CAST(`").append(columnName).append("` AS CHAR) = ?");
+                    params.add(searchValue);
+                }
+            } else {
+                // 字符串类型：精确匹配
+                whereClause.append("CAST(`").append(columnName).append("` AS CHAR) = ?");
+                params.add(searchValue);
+            }
+        } else {
+            // 模糊搜索：包含匹配（默认）
+            if (isNumericType(dataType)) {
+                // 数值类型：尝试等值匹配和字符串包含匹配
+                try {
+                    if (isInteger(searchValue)) {
+                        whereClause.append("(`").append(columnName).append("` = ? OR CAST(`").append(columnName).append("` AS CHAR) LIKE ?)");
+                        params.add(Long.parseLong(searchValue));
+                        params.add("%" + searchValue + "%");
+                    } else if (isDecimal(searchValue)) {
+                        whereClause.append("(`").append(columnName).append("` = ? OR CAST(`").append(columnName).append("` AS CHAR) LIKE ?)");
+                        params.add(Double.parseDouble(searchValue));
+                        params.add("%" + searchValue + "%");
+                    } else {
+                        whereClause.append("CAST(`").append(columnName).append("` AS CHAR) LIKE ?");
+                        params.add("%" + searchValue + "%");
+                    }
+                } catch (NumberFormatException e) {
+                    whereClause.append("CAST(`").append(columnName).append("` AS CHAR) LIKE ?");
+                    params.add("%" + searchValue + "%");
+                }
+            } else {
+                // 字符串类型：使用LIKE模糊匹配
+                whereClause.append("CAST(`").append(columnName).append("` AS CHAR CHARACTER SET utf8) COLLATE utf8_general_ci LIKE ?");
+                params.add("%" + searchValue + "%");
+            }
+        }
+    }
+
     /**
      * 判断数据类型是否为数值类型
      */
@@ -4006,14 +4051,33 @@ public class DatabaseService {
      * 通过SSE实时推送搜索进度给前端
      */
     public void findTablesByValueWithProgress(String dataSourceName, String searchValue, String searchMode, SseEmitter emitter) {
+        findTablesByValueWithProgress(dataSourceName, searchValue, searchMode, "fuzzy", emitter);
+    }
+    
+    /**
+     * 按字段值搜索表（带实时进度反馈的版本，支持搜索类型）
+     * 通过SSE实时推送搜索进度给前端
+     */
+    public void findTablesByValueWithProgress(String dataSourceName, String searchValue, String searchMode, String searchType, SseEmitter emitter) {
         if (searchValue == null || searchValue.trim().isEmpty()) {
             throw new IllegalArgumentException("搜索值不能为空");
         }
+        
+        // 添加调试日志
+        logger.info("=== 服务层接收参数 ===");
+        logger.info("searchValue: '{}', searchMode: '{}', searchType: '{}'", searchValue, searchMode, searchType);
         
         // 向后兼容：如果没有指定searchMode，使用auto模式
         if (searchMode == null || searchMode.trim().isEmpty()) {
             searchMode = "auto";
         }
+        
+        // 向后兼容：如果没有指定searchType，使用fuzzy模式
+        if (searchType == null || searchType.trim().isEmpty()) {
+            searchType = "fuzzy";
+        }
+        
+        logger.info("处理后的参数: searchValue: '{}', searchMode: '{}', searchType: '{}'", searchValue, searchMode, searchType);
         
         List<Map<String, Object>> resultTables = new ArrayList<>();
         long startTime = System.currentTimeMillis();
@@ -4086,13 +4150,13 @@ public class DatabaseService {
                 }
                 
                 try {
-                    // 检查表是否包含匹配值（支持搜索模式）
-                    boolean hasMatch = checkTableForValueWithMode(dataSourceName, tableName, searchValue, searchMode);
+                    // 检查表是否包含匹配值（支持搜索模式和搜索类型）
+                    boolean hasMatch = checkTableForValueWithMode(dataSourceName, tableName, searchValue, searchMode, searchType);
                     
                     if (hasMatch) {
                         foundCount++;
                         // 获取匹配记录的准确数量
-                        int actualCount = getActualMatchCountWithMode(dataSourceName, tableName, searchValue, searchMode);
+                        int actualCount = getActualMatchCountWithMode(dataSourceName, tableName, searchValue, searchMode, searchType);
                         
                         Map<String, Object> resultTable = new HashMap<>();
                         resultTable.put("TABLE_NAME", tableName);
