@@ -153,6 +153,44 @@ public class DatabaseService {
     }
 
     /**
+     * 根据WHERE条件获取表数据（用于导出）
+     */
+    public List<Map<String, Object>> getTableDataWithWhere(String dataSourceName, String tableName, String whereClause, Integer limit) {
+        // 检查是否为用户创建的数据库
+        if (isUserCreatedDatabase(dataSourceName)) {
+            // 用户创建的数据库，使用默认数据源连接，但查询指定数据库的表
+            String sql = String.format("SELECT * FROM `%s`.`%s` WHERE %s", dataSourceName, tableName, whereClause);
+            if (limit != null && limit > 0) {
+                sql += " LIMIT " + limit;
+            }
+            return getJdbcTemplate(DEFAULT_DATASOURCE).queryForList(sql);
+        } else {
+            // 配置的数据源，使用原来的逻辑
+            String sql = String.format("SELECT * FROM `%s` WHERE %s", tableName, whereClause);
+            if (limit != null && limit > 0) {
+                sql += " LIMIT " + limit;
+            }
+            return getJdbcTemplate(dataSourceName).queryForList(sql);
+        }
+    }
+
+    /**
+     * 根据WHERE条件获取表数据行数（用于导出）
+     */
+    public Integer getTableDataCountWithWhere(String dataSourceName, String tableName, String whereClause) {
+        // 检查是否为用户创建的数据库
+        if (isUserCreatedDatabase(dataSourceName)) {
+            // 用户创建的数据库，使用默认数据源连接，但查询指定数据库的表
+            String sql = String.format("SELECT COUNT(*) FROM `%s`.`%s` WHERE %s", dataSourceName, tableName, whereClause);
+            return getJdbcTemplate(DEFAULT_DATASOURCE).queryForObject(sql, Integer.class);
+        } else {
+            // 配置的数据源，使用原来的逻辑
+            String sql = String.format("SELECT COUNT(*) FROM `%s` WHERE %s", tableName, whereClause);
+            return getJdbcTemplate(dataSourceName).queryForObject(sql, Integer.class);
+        }
+    }
+
+    /**
      * 分页获取指定数据源中表数据
      */
     public Map<String, Object> getTableDataWithPagination(String dataSourceName, String tableName, int page, int size) {

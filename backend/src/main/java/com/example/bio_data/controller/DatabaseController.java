@@ -2,6 +2,7 @@ package com.example.bio_data.controller;
 
 import com.example.bio_data.service.DatabaseService;
 import com.example.bio_data.service.PermissionService;
+import com.example.bio_data.service.ExportService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,6 +13,9 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
@@ -30,6 +34,9 @@ public class DatabaseController {
     
     @Autowired
     private PermissionService permissionService;
+    
+    @Autowired
+    private ExportService exportService;
     
     /**
      * 安全地从请求中获取userId
@@ -1513,6 +1520,122 @@ public class DatabaseController {
             return ResponseEntity.badRequest().body(Map.of(
                 "success", false,
                 "error", "修改表结构失败: " + e.getMessage()
+            ));
+        }
+    }
+
+    // =============================================================================
+    // 数据导出相关接口
+    // =============================================================================
+
+    /**
+     * 导出表数据为CSV格式
+     */
+    @GetMapping("/tables/{tableName}/export/csv")
+    public ResponseEntity<StreamingResponseBody> exportTableToCsv(
+            @PathVariable String tableName,
+            @RequestParam(required = false) String dataSource,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String userType,
+            @RequestParam(required = false, defaultValue = "10000") Integer limit,
+            @RequestParam(required = false) String whereClause) {
+        try {
+            // 权限验证
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+            if (permissionCheck != null) {
+                return ResponseEntity.status(permissionCheck.getStatusCode()).body(null);
+            }
+
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
+            
+            StreamingResponseBody responseBody = exportService.exportTableToCsv(
+                actualDataSource, tableName, userId, userType, limit, whereClause);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            headers.setContentDispositionFormData("attachment", tableName + "_export.csv");
+            headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(responseBody);
+
+        } catch (Exception e) {
+            logger.error("CSV导出失败: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    /**
+     * 导出表数据为Excel格式
+     */
+    @GetMapping("/tables/{tableName}/export/excel")
+    public ResponseEntity<StreamingResponseBody> exportTableToExcel(
+            @PathVariable String tableName,
+            @RequestParam(required = false) String dataSource,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String userType,
+            @RequestParam(required = false, defaultValue = "10000") Integer limit,
+            @RequestParam(required = false) String whereClause) {
+        try {
+            // 权限验证
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+            if (permissionCheck != null) {
+                return ResponseEntity.status(permissionCheck.getStatusCode()).body(null);
+            }
+
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
+            
+            StreamingResponseBody responseBody = exportService.exportTableToExcel(
+                actualDataSource, tableName, userId, userType, limit, whereClause);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            headers.setContentDispositionFormData("attachment", tableName + "_export.xlsx");
+            headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(responseBody);
+
+        } catch (Exception e) {
+            logger.error("Excel导出失败: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    /**
+     * 获取导出文件信息
+     */
+    @GetMapping("/tables/{tableName}/export/info")
+    public ResponseEntity<?> getExportInfo(
+            @PathVariable String tableName,
+            @RequestParam(required = false) String dataSource,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String userType,
+            @RequestParam(required = false) String whereClause) {
+        try {
+            // 权限验证
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+            if (permissionCheck != null) {
+                return permissionCheck;
+            }
+
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
+            
+            Map<String, Object> exportInfo = exportService.getExportInfo(
+                actualDataSource, tableName, userId, userType, whereClause);
+
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "exportInfo", exportInfo
+            ));
+
+        } catch (Exception e) {
+            logger.error("获取导出信息失败: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "error", "获取导出信息失败: " + e.getMessage()
             ));
         }
     }

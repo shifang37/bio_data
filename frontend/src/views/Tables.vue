@@ -285,13 +285,21 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="TABLE_COMMENT" label="注释" show-overflow-tooltip />
-                <el-table-column label="操作" width="280" fixed="right">
+                <el-table-column label="操作" width="350" fixed="right">
                   <template #default="scope">
                     <el-button size="small" @click="viewTableData(scope.row.TABLE_NAME)">
                       查看数据
                     </el-button>
                     <el-button size="small" @click="viewTableStructure(scope.row.TABLE_NAME)">
                       表结构
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      type="success"
+                      @click="showExportDialog(scope.row.TABLE_NAME)"
+                      :icon="Download"
+                    >
+                      导出
                     </el-button>
                     <el-button 
                       v-if="canModifyCurrentDatabase && isUserDatabase(selectedDatabase)"
@@ -1397,16 +1405,25 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 导出对话框 -->
+    <ExportDialog
+      :visible="exportDialogVisible"
+      :table-name="exportTableName"
+      :data-source="selectedDatabase"
+      @close="closeExportDialog"
+    />
   </div>
 </template>
 
 <script>
 import { ref, onMounted, onUnmounted, computed, onActivated, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Search, Coin, Folder, FolderOpened, Refresh, Plus, Minus, Loading, ArrowDown, Aim } from '@element-plus/icons-vue'
+import { Delete, Edit, Search, Coin, Folder, FolderOpened, Refresh, Plus, Minus, Loading, ArrowDown, Aim, Download } from '@element-plus/icons-vue'
 import api, { userState, checkPermission, databaseApi } from '../utils/api'
 import searchDialogsState from '../utils/searchDialogsStore'
 import { useRoute } from 'vue-router'
+import ExportDialog from '../components/ExportDialog.vue'
 
 export default {
   name: 'Tables',
@@ -1422,7 +1439,9 @@ export default {
     Minus,
     Loading,
     ArrowDown,
-    Aim
+    Aim,
+    Download,
+    ExportDialog
   },
   setup() {
     const route = useRoute()
@@ -1457,6 +1476,10 @@ export default {
     const fieldSearchResult = ref({})
     const fieldSearchError = ref('')
     const fieldSearchResultDialogVisible = ref(false)
+    
+    // 导出相关状态
+    const exportDialogVisible = ref(false)
+    const exportTableName = ref('')
     
     // 多弹窗管理 - 使用全局状态
     const searchDialogs = computed(() => searchDialogsState.searchDialogs)
@@ -1919,6 +1942,18 @@ export default {
       }
       
       await loadTableDataWithPagination()
+    }
+
+    // 显示导出对话框
+    const showExportDialog = (tableName) => {
+      exportTableName.value = tableName
+      exportDialogVisible.value = true
+    }
+
+    // 关闭导出对话框
+    const closeExportDialog = () => {
+      exportDialogVisible.value = false
+      exportTableName.value = ''
     }
 
     const loadTableData = async () => {
@@ -4103,7 +4138,12 @@ export default {
       dataTypeGroups,
       primaryKeyColumns,
       showModifyColumnDialog,
-      confirmModifyColumn
+      confirmModifyColumn,
+      // 导出相关
+      exportDialogVisible,
+      exportTableName,
+      showExportDialog,
+      closeExportDialog
     }
   }
 }

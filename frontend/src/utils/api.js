@@ -417,6 +417,41 @@ export const databaseApi = {
   // 自动建表并导入数据
   autoCreateTableAndImport(importData) {
     return api.post('/api/database/auto-create-table-import', importData)
+  },
+
+  // 导出表数据为CSV格式
+  exportTableToCsv(tableName, dataSource, userId, userType, limit = 10000, whereClause = null) {
+    const params = { dataSource, userId, userType, limit }
+    if (whereClause) {
+      params.whereClause = whereClause
+    }
+    return api.get(`/api/database/tables/${tableName}/export/csv`, {
+      params,
+      responseType: 'blob' // 重要：设置响应类型为blob以处理文件下载
+    })
+  },
+
+  // 导出表数据为Excel格式
+  exportTableToExcel(tableName, dataSource, userId, userType, limit = 10000, whereClause = null) {
+    const params = { dataSource, userId, userType, limit }
+    if (whereClause) {
+      params.whereClause = whereClause
+    }
+    return api.get(`/api/database/tables/${tableName}/export/excel`, {
+      params,
+      responseType: 'blob' // 重要：设置响应类型为blob以处理文件下载
+    })
+  },
+
+  // 获取导出文件信息
+  getExportInfo(tableName, dataSource, userId, userType, whereClause = null) {
+    const params = { dataSource, userId, userType }
+    if (whereClause) {
+      params.whereClause = whereClause
+    }
+    return api.get(`/api/database/tables/${tableName}/export/info`, {
+      params
+    })
   }
 }
 
