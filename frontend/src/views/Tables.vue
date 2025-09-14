@@ -2366,7 +2366,18 @@ export default {
     // 判断单元格值是否包含搜索值
     const cellContainsSearchValue = (cellValue, searchValue) => {
       if (!cellValue || !searchValue) return false
-      return String(cellValue).toLowerCase().includes(String(searchValue).toLowerCase())
+      
+      const cellStr = String(cellValue).toLowerCase()
+      const searchStr = String(searchValue).toLowerCase()
+      
+      // 根据当前搜索类型决定匹配逻辑
+      if (currentSearchType.value === 'exact') {
+        // 精确搜索：完全匹配
+        return cellStr === searchStr
+      } else {
+        // 模糊搜索：包含匹配（使用原来的简单包含逻辑）
+        return cellStr.includes(searchStr)
+      }
     }
 
     const formatBytes = (bytes) => {
