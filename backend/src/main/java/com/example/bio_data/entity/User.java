@@ -1,6 +1,7 @@
 package com.example.bio_data.entity;
 
 import jakarta.persistence.*;
+import com.example.bio_data.entity.Role;
 
 @Entity
 @Table(name = "user")
@@ -16,17 +17,25 @@ public class User {
     @Column(name = "password", nullable = false, length = 100)
     private String password;
     
-    @Column(name = "permission", length = 50)
-    private String permission;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false)
+    private Role role;
     
     // 默认构造函数
     public User() {}
     
     // 带参构造函数
-    public User(String name, String password, String permission) {
+    public User(String name, String password, Role role) {
         this.name = name;
         this.password = password;
-        this.permission = permission;
+        this.role = role;
+    }
+    
+    // 带参构造函数（支持字符串角色）
+    public User(String name, String password, String roleValue) {
+        this.name = name;
+        this.password = password;
+        this.role = Role.fromValue(roleValue);
     }
     
     // Getter和Setter方法
@@ -54,12 +63,23 @@ public class User {
         this.password = password;
     }
     
-    public String getPermission() {
-        return permission;
+    public Role getRole() {
+        return role;
     }
     
-    public void setPermission(String permission) {
-        this.permission = permission;
+    public void setRole(Role role) {
+        this.role = role;
+    }
+    
+    public void setRole(String roleValue) {
+        this.role = Role.fromValue(roleValue);
+    }
+    
+    /**
+     * 获取角色的字符串值
+     */
+    public String getRoleValue() {
+        return role != null ? role.getValue() : null;
     }
     
     @Override
@@ -67,7 +87,7 @@ public class User {
         return "User{" +
                 "id=" + id +
                 ", name='" + name + '\'' +
-                ", permission='" + permission + '\'' +
+                ", role=" + (role != null ? role.getValue() : null) +
                 '}';
     }
 } 

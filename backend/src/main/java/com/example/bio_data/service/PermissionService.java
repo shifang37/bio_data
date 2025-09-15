@@ -1,7 +1,7 @@
 package com.example.bio_data.service;
 
 import com.example.bio_data.entity.User;
-import com.example.bio_data.entity.Admin;
+import com.example.bio_data.entity.Role;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,19 +25,6 @@ public class PermissionService {
     @Qualifier("loginJdbcTemplate")
     private JdbcTemplate loginJdbcTemplate;
 
-    // Admin RowMapper
-    private final RowMapper<Admin> adminRowMapper = new RowMapper<Admin>() {
-        @Override
-        public Admin mapRow(ResultSet rs, int rowNum) throws SQLException {
-            Admin admin = new Admin();
-            admin.setId(rs.getLong("id"));
-            admin.setName(rs.getString("name"));
-            admin.setPassword(rs.getString("password"));
-            admin.setPermission(rs.getString("permission"));
-            return admin;
-        }
-    };
-
     // User RowMapper
     private final RowMapper<User> userRowMapper = new RowMapper<User>() {
         @Override
@@ -46,7 +33,8 @@ public class PermissionService {
             user.setId(rs.getLong("id"));
             user.setName(rs.getString("name"));
             user.setPassword(rs.getString("password"));
-            user.setPermission(rs.getString("permission"));
+            String roleValue = rs.getString("role");
+            user.setRole(roleValue);
             return user;
         }
     };
@@ -54,28 +42,46 @@ public class PermissionService {
     /**
      * 检查用户是否为管理员
      * @param userId 用户ID
-     * @param userType 用户类型（"admin" 或 "user"）
+     * @param userType 用户类型（"admin", "internal", "guest"）
      * @return 是否为管理员
      */
     public boolean isAdmin(Long userId, String userType) {
-        if (userId == null || userType == null) {
+        if (userId == null) {
             return false;
         }
 
         try {
-            if ("admin".equalsIgnoreCase(userType)) {
-                String sql = "SELECT * FROM admin WHERE id = ?";
-                Admin admin = loginJdbcTemplate.queryForObject(sql, adminRowMapper, userId);
-                return admin != null && ("admin".equalsIgnoreCase(admin.getPermission()) || 
-                                       "super_admin".equalsIgnoreCase(admin.getPermission()));
-            }
-            // 普通用户不是管理员
-            return false;
+            String sql = "SELECT * FROM user WHERE id = ?";
+            User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
+            return user != null && user.getRole() == Role.ADMIN;
         } catch (EmptyResultDataAccessException e) {
             logger.warn("用户不存在: userId={}, userType={}", userId, userType);
             return false;
         } catch (Exception e) {
             logger.error("检查管理员权限时发生异常: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 检查用户是否为内部用户或管理员
+     * @param userId 用户ID
+     * @return 是否为内部用户或管理员
+     */
+    public boolean isInternal(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+
+        try {
+            String sql = "SELECT * FROM user WHERE id = ?";
+            User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
+            return user != null && (user.getRole() == Role.INTERNAL || user.getRole() == Role.ADMIN);
+        } catch (EmptyResultDataAccessException e) {
+            logger.warn("用户不存在: userId={}", userId);
+            return false;
+        } catch (Exception e) {
+            logger.error("检查内部用户权限时发生异常: {}", e.getMessage());
             return false;
         }
     }
@@ -104,12 +110,12 @@ public class PermissionService {
     /**
      * 检查用户是否有权限修改指定数据库
      * @param userId 用户ID
-     * @param userType 用户类型（"admin" 或 "user"）
+     * @param userType 用户类型（"admin", "internal", "guest"）
      * @param databaseName 数据库名称
      * @return 是否有权限修改
      */
     public boolean hasPermissionToModifyDatabase(Long userId, String userType, String databaseName) {
-        if (userId == null || userType == null || databaseName == null) {
+        if (userId == null || databaseName == null) {
             return false;
         }
 
@@ -120,18 +126,9 @@ public class PermissionService {
 
         // 对于其他数据库，所有已登录用户都可以修改
         try {
-            if ("admin".equalsIgnoreCase(userType)) {
-                // 验证管理员用户确实存在
-                String sql = "SELECT * FROM admin WHERE id = ?";
-                Admin admin = loginJdbcTemplate.queryForObject(sql, adminRowMapper, userId);
-                return admin != null;
-            } else if ("user".equalsIgnoreCase(userType)) {
-                // 验证普通用户确实存在
-                String sql = "SELECT * FROM user WHERE id = ?";
-                User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
-                return user != null;
-            }
-            return false;
+            String sql = "SELECT * FROM user WHERE id = ?";
+            User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
+            return user != null;
         } catch (EmptyResultDataAccessException e) {
             logger.warn("用户不存在: userId={}, userType={}", userId, userType);
             return false;
@@ -144,39 +141,33 @@ public class PermissionService {
     /**
      * 获取用户权限信息
      * @param userId 用户ID
-     * @param userType 用户类型（"admin" 或 "user"）
+     * @param userType 用户类型（"admin", "internal", "guest"）
      * @return 用户权限信息
      */
     public Map<String, Object> getUserPermissionInfo(Long userId, String userType) {
         Map<String, Object> result = new HashMap<>();
         
-        if (userId == null || userType == null) {
+        if (userId == null) {
             result.put("success", false);
             result.put("error", "用户信息无效");
             return result;
         }
 
         try {
-            if ("admin".equalsIgnoreCase(userType)) {
-                String sql = "SELECT * FROM admin WHERE id = ?";
-                Admin admin = loginJdbcTemplate.queryForObject(sql, adminRowMapper, userId);
-                if (admin != null) {
-                    result.put("success", true);
-                    result.put("userType", "admin");
-                    result.put("permission", admin.getPermission());
-                    result.put("canAccessLogin", isAdmin(userId, userType));
-                    result.put("canModifyLogin", isAdmin(userId, userType));
-                }
-            } else if ("user".equalsIgnoreCase(userType)) {
-                String sql = "SELECT * FROM user WHERE id = ?";
-                User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
-                if (user != null) {
-                    result.put("success", true);
-                    result.put("userType", "user");
-                    result.put("permission", user.getPermission());
-                    result.put("canAccessLogin", false);
-                    result.put("canModifyLogin", false);
-                }
+            String sql = "SELECT * FROM user WHERE id = ?";
+            User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
+            if (user != null) {
+                result.put("success", true);
+                result.put("userType", getUserTypeFromRole(user.getRole()));
+                result.put("role", user.getRoleValue());
+                result.put("permission", user.getRoleValue()); // 兼容旧版本
+                result.put("canAccessLogin", user.getRole() == Role.ADMIN);
+                result.put("canModifyLogin", user.getRole() == Role.ADMIN);
+                result.put("isAdmin", user.getRole() == Role.ADMIN);
+                result.put("isInternal", user.getRole() == Role.INTERNAL || user.getRole() == Role.ADMIN);
+            } else {
+                result.put("success", false);
+                result.put("error", "用户不存在");
             }
         } catch (EmptyResultDataAccessException e) {
             result.put("success", false);
@@ -189,6 +180,20 @@ public class PermissionService {
         }
 
         return result;
+    }
+
+    /**
+     * 根据Role枚举获取用户类型字符串
+     */
+    private String getUserTypeFromRole(Role role) {
+        if (role == null) {
+            return "guest";
+        }
+        return switch (role) {
+            case ADMIN -> "admin";
+            case INTERNAL -> "internal";
+            case GUEST -> "guest";
+        };
     }
 
     /**

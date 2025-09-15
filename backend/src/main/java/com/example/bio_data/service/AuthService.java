@@ -1,7 +1,7 @@
 package com.example.bio_data.service;
 
 import com.example.bio_data.entity.User;
-import com.example.bio_data.entity.Admin;
+import com.example.bio_data.entity.Role;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,28 +34,16 @@ public class AuthService {
             user.setId(rs.getLong("id"));
             user.setName(rs.getString("name"));
             user.setPassword(rs.getString("password"));
-            user.setPermission(rs.getString("permission"));
+            String roleValue = rs.getString("role");
+            user.setRole(roleValue);
             return user;
         }
     };
 
-    // Admin RowMapper
-    private final RowMapper<Admin> adminRowMapper = new RowMapper<Admin>() {
-        @Override
-        public Admin mapRow(ResultSet rs, int rowNum) throws SQLException {
-            Admin admin = new Admin();
-            admin.setId(rs.getLong("id"));
-            admin.setName(rs.getString("name"));
-            admin.setPassword(rs.getString("password"));
-            admin.setPermission(rs.getString("permission"));
-            return admin;
-        }
-    };
-
     /**
-     * 用户登录验证
+     * 统一用户登录验证
      */
-    public Map<String, Object> loginUser(String username, String password) {
+    public Map<String, Object> login(String username, String password) {
         Map<String, Object> result = new HashMap<>();
         try {
             String sql = "SELECT * FROM user WHERE name = ? AND password = ?";
@@ -63,12 +51,13 @@ public class AuthService {
             
             if (user != null) {
                 result.put("success", true);
-                result.put("userType", "user");
+                result.put("userType", getUserType(user.getRole()));
                 result.put("userId", user.getId());
                 result.put("username", user.getName());
-                result.put("permission", user.getPermission());
-                result.put("message", "用户登录成功");
-                logger.info("用户登录成功: {}", username);
+                result.put("role", user.getRoleValue());
+                result.put("permission", user.getRoleValue()); // 兼容旧版本
+                result.put("message", "登录成功");
+                logger.info("用户登录成功: {}, 角色: {}", username, user.getRoleValue());
             } else {
                 result.put("success", false);
                 result.put("message", "用户名或密码错误");
@@ -86,41 +75,36 @@ public class AuthService {
     }
 
     /**
-     * 管理员登录验证
+     * 兼容旧版本的用户登录方法
+     */
+    public Map<String, Object> loginUser(String username, String password) {
+        return login(username, password);
+    }
+
+    /**
+     * 兼容旧版本的管理员登录方法
      */
     public Map<String, Object> loginAdmin(String username, String password) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            String sql = "SELECT * FROM admin WHERE name = ? AND password = ?";
-            Admin admin = loginJdbcTemplate.queryForObject(sql, adminRowMapper, username, password);
-            
-            if (admin != null) {
-                result.put("success", true);
-                result.put("userType", "admin");
-                result.put("userId", admin.getId());
-                result.put("username", admin.getName());
-                result.put("permission", admin.getPermission());
-                result.put("message", "管理员登录成功");
-                logger.info("管理员登录成功: {}", username);
-            } else {
-                result.put("success", false);
-                result.put("message", "用户名或密码错误");
-            }
-        } catch (EmptyResultDataAccessException e) {
-            result.put("success", false);
-            result.put("message", "用户名或密码错误");
-            logger.warn("管理员登录失败，用户不存在: {}", username);
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", "登录异常: " + e.getMessage());
-            logger.error("管理员登录异常: {}", e.getMessage());
+        return login(username, password);
+    }
+
+    /**
+     * 根据Role枚举获取用户类型字符串
+     */
+    private String getUserType(Role role) {
+        if (role == null) {
+            return "guest";
         }
-        return result;
+        return switch (role) {
+            case ADMIN -> "admin";
+            case INTERNAL -> "internal";
+            case GUEST -> "guest";
+        };
     }
 
     /**
      * 用户注册
-     * 只能注册普通用户，权限固定为"user"
+     * 只能注册普通用户，角色固定为"guest"
      */
     public Map<String, Object> registerUser(String username, String password, String permission) {
         Map<String, Object> result = new HashMap<>();
@@ -135,17 +119,17 @@ public class AuthService {
                 return result;
             }
 
-            // 强制权限为"user"，确保只能注册普通用户
-            String actualPermission = "user";
+            // 强制角色为"guest"，确保只能注册普通用户
+            Role actualRole = Role.GUEST;
             
             // 插入新用户
-            String insertSql = "INSERT INTO user (name, password, permission) VALUES (?, ?, ?)";
-            int rows = loginJdbcTemplate.update(insertSql, username, password, actualPermission);
+            String insertSql = "INSERT INTO user (name, password, role) VALUES (?, ?, ?)";
+            int rows = loginJdbcTemplate.update(insertSql, username, password, actualRole.getValue());
             
             if (rows > 0) {
                 result.put("success", true);
                 result.put("message", "用户注册成功");
-                logger.info("用户注册成功: {}, 权限: {}", username, actualPermission);
+                logger.info("用户注册成功: {}, 角色: {}", username, actualRole.getValue());
             } else {
                 result.put("success", false);
                 result.put("message", "注册失败");
@@ -179,11 +163,18 @@ public class AuthService {
     }
 
     /**
-     * 获取所有管理员
+     * 根据角色获取用户列表
      */
-    public List<Admin> getAllAdmins() {
-        String sql = "SELECT * FROM admin ORDER BY id";
-        return loginJdbcTemplate.query(sql, adminRowMapper);
+    public List<User> getUsersByRole(Role role) {
+        String sql = "SELECT * FROM user WHERE role = ? ORDER BY id";
+        return loginJdbcTemplate.query(sql, userRowMapper, role.getValue());
+    }
+
+    /**
+     * 获取管理员用户列表（兼容旧版本）
+     */
+    public List<User> getAllAdmins() {
+        return getUsersByRole(Role.ADMIN);
     }
 
     /**
@@ -199,15 +190,23 @@ public class AuthService {
     }
 
     /**
-     * 根据ID查找管理员
+     * 根据用户名查找用户
      */
-    public Admin getAdminById(Long id) {
+    public User getUserByName(String name) {
         try {
-            String sql = "SELECT * FROM admin WHERE id = ?";
-            return loginJdbcTemplate.queryForObject(sql, adminRowMapper, id);
+            String sql = "SELECT * FROM user WHERE name = ?";
+            return loginJdbcTemplate.queryForObject(sql, userRowMapper, name);
         } catch (EmptyResultDataAccessException e) {
             return null;
         }
+    }
+
+    /**
+     * 兼容旧版本的根据ID查找管理员方法
+     */
+    public User getAdminById(Long id) {
+        User user = getUserById(id);
+        return (user != null && user.getRole() == Role.ADMIN) ? user : null;
     }
 
     /**

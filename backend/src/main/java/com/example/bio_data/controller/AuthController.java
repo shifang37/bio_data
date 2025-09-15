@@ -20,6 +20,33 @@ public class AuthController {
     private PermissionService permissionService;
 
     /**
+     * 统一登录接口
+     */
+    @PostMapping("/login")
+    public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> loginRequest) {
+        try {
+            String username = loginRequest.get("username");
+            String password = loginRequest.get("password");
+
+            if (username == null || password == null || username.trim().isEmpty() || password.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "用户名和密码不能为空"
+                ));
+            }
+
+            Map<String, Object> result = authService.login(username, password);
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "message", "登录异常: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
      * 用户登录
      */
     @PostMapping("/login/user")
@@ -75,15 +102,15 @@ public class AuthController {
 
     /**
      * 用户注册
-     * 只能注册普通用户，权限固定为"user"
+     * 只能注册普通用户，角色固定为"guest"
      */
     @PostMapping("/register/user")
     public ResponseEntity<Map<String, Object>> registerUser(@RequestBody Map<String, String> registerRequest) {
         try {
             String username = registerRequest.get("username");
             String password = registerRequest.get("password");
-            // 用户注册时权限固定为"user"，不接受前端传递的权限参数
-            String permission = "user";
+            // 用户注册时角色固定为"guest"，不接受前端传递的角色参数
+            String permission = "guest";
 
             if (username == null || password == null || username.trim().isEmpty() || password.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of(
