@@ -20,7 +20,7 @@ public class AuthController {
     private PermissionService permissionService;
 
     /**
-     * 统一登录接口
+     * 统一登录接口 - 允许所有角色用户登录
      */
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> loginRequest) {
@@ -47,7 +47,7 @@ public class AuthController {
     }
 
     /**
-     * 用户登录
+     * 用户登录 - 只允许guest角色用户登录
      */
     @PostMapping("/login/user")
     public ResponseEntity<Map<String, Object>> loginUser(@RequestBody Map<String, String> loginRequest) {
@@ -74,7 +74,7 @@ public class AuthController {
     }
 
     /**
-     * 管理员登录
+     * 管理员登录 - 允许admin和internal角色用户登录
      */
     @PostMapping("/login/admin")
     public ResponseEntity<Map<String, Object>> loginAdmin(@RequestBody Map<String, String> loginRequest) {

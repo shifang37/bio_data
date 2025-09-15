@@ -51,7 +51,7 @@ public class PermissionService {
         }
 
         try {
-            String sql = "SELECT * FROM user WHERE id = ?";
+            String sql = "SELECT * FROM users WHERE id = ?";
             User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
             return user != null && user.getRole() == Role.ADMIN;
         } catch (EmptyResultDataAccessException e) {
@@ -74,7 +74,7 @@ public class PermissionService {
         }
 
         try {
-            String sql = "SELECT * FROM user WHERE id = ?";
+            String sql = "SELECT * FROM users WHERE id = ?";
             User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
             return user != null && (user.getRole() == Role.INTERNAL || user.getRole() == Role.ADMIN);
         } catch (EmptyResultDataAccessException e) {
@@ -126,7 +126,7 @@ public class PermissionService {
 
         // 对于其他数据库，所有已登录用户都可以修改
         try {
-            String sql = "SELECT * FROM user WHERE id = ?";
+            String sql = "SELECT * FROM users WHERE id = ?";
             User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
             return user != null;
         } catch (EmptyResultDataAccessException e) {
@@ -154,7 +154,7 @@ public class PermissionService {
         }
 
         try {
-            String sql = "SELECT * FROM user WHERE id = ?";
+            String sql = "SELECT * FROM users WHERE id = ?";
             User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
             if (user != null) {
                 result.put("success", true);

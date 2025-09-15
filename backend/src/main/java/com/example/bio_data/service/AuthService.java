@@ -46,7 +46,7 @@ public class AuthService {
     public Map<String, Object> login(String username, String password) {
         Map<String, Object> result = new HashMap<>();
         try {
-            String sql = "SELECT * FROM user WHERE name = ? AND password = ?";
+            String sql = "SELECT * FROM users WHERE name = ? AND password = ?";
             User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, username, password);
             
             if (user != null) {
@@ -75,17 +75,47 @@ public class AuthService {
     }
 
     /**
-     * 兼容旧版本的用户登录方法
+     * 用户登录方法 - 只允许guest角色用户登录
      */
     public Map<String, Object> loginUser(String username, String password) {
-        return login(username, password);
+        Map<String, Object> result = login(username, password);
+        
+        // 检查登录结果
+        if ((Boolean) result.get("success")) {
+            String role = (String) result.get("role");
+            Role userRole = Role.fromValue(role);
+            
+            // 只允许guest角色用户通过用户登录接口登录
+            if (userRole == Role.ADMIN || userRole == Role.INTERNAL) {
+                result.put("success", false);
+                result.put("message", "管理员和内部用户请使用管理员登录界面");
+                logger.warn("管理员/内部用户尝试通过用户登录接口登录: {}, 角色: {}", username, role);
+            }
+        }
+        
+        return result;
     }
 
     /**
-     * 兼容旧版本的管理员登录方法
+     * 管理员登录方法 - 允许admin和internal角色用户登录
      */
     public Map<String, Object> loginAdmin(String username, String password) {
-        return login(username, password);
+        Map<String, Object> result = login(username, password);
+        
+        // 检查登录结果
+        if ((Boolean) result.get("success")) {
+            String role = (String) result.get("role");
+            Role userRole = Role.fromValue(role);
+            
+            // 只允许admin和internal角色用户通过管理员登录接口登录
+            if (userRole != Role.ADMIN && userRole != Role.INTERNAL) {
+                result.put("success", false);
+                result.put("message", "只有管理员和内部用户可以使用管理员登录界面");
+                logger.warn("普通用户尝试通过管理员登录接口登录: {}, 角色: {}", username, role);
+            }
+        }
+        
+        return result;
     }
 
     /**
@@ -110,7 +140,7 @@ public class AuthService {
         Map<String, Object> result = new HashMap<>();
         try {
             // 检查用户名是否已存在
-            String checkSql = "SELECT COUNT(*) FROM user WHERE name = ?";
+            String checkSql = "SELECT COUNT(*) FROM users WHERE name = ?";
             int count = loginJdbcTemplate.queryForObject(checkSql, Integer.class, username);
             
             if (count > 0) {
@@ -123,7 +153,7 @@ public class AuthService {
             Role actualRole = Role.GUEST;
             
             // 插入新用户
-            String insertSql = "INSERT INTO user (name, password, role) VALUES (?, ?, ?)";
+            String insertSql = "INSERT INTO users (name, password, role) VALUES (?, ?, ?)";
             int rows = loginJdbcTemplate.update(insertSql, username, password, actualRole.getValue());
             
             if (rows > 0) {
@@ -158,7 +188,7 @@ public class AuthService {
      * 获取所有用户
      */
     public List<User> getAllUsers() {
-        String sql = "SELECT * FROM user ORDER BY id";
+        String sql = "SELECT * FROM users ORDER BY id";
         return loginJdbcTemplate.query(sql, userRowMapper);
     }
 
@@ -166,7 +196,7 @@ public class AuthService {
      * 根据角色获取用户列表
      */
     public List<User> getUsersByRole(Role role) {
-        String sql = "SELECT * FROM user WHERE role = ? ORDER BY id";
+        String sql = "SELECT * FROM users WHERE role = ? ORDER BY id";
         return loginJdbcTemplate.query(sql, userRowMapper, role.getValue());
     }
 
@@ -182,7 +212,7 @@ public class AuthService {
      */
     public User getUserById(Long id) {
         try {
-            String sql = "SELECT * FROM user WHERE id = ?";
+            String sql = "SELECT * FROM users WHERE id = ?";
             return loginJdbcTemplate.queryForObject(sql, userRowMapper, id);
         } catch (EmptyResultDataAccessException e) {
             return null;
@@ -194,7 +224,7 @@ public class AuthService {
      */
     public User getUserByName(String name) {
         try {
-            String sql = "SELECT * FROM user WHERE name = ?";
+            String sql = "SELECT * FROM users WHERE name = ?";
             return loginJdbcTemplate.queryForObject(sql, userRowMapper, name);
         } catch (EmptyResultDataAccessException e) {
             return null;
@@ -216,7 +246,7 @@ public class AuthService {
         Map<String, Object> result = new HashMap<>();
         try {
             // 检查用户是否存在
-            String checkSql = "SELECT COUNT(*) FROM user WHERE name = ?";
+            String checkSql = "SELECT COUNT(*) FROM users WHERE name = ?";
             int count = loginJdbcTemplate.queryForObject(checkSql, Integer.class, username);
             
             if (count == 0) {
@@ -226,7 +256,7 @@ public class AuthService {
             }
 
             // 更新用户密码
-            String updateSql = "UPDATE user SET password = ? WHERE name = ?";
+            String updateSql = "UPDATE users SET password = ? WHERE name = ?";
             int rows = loginJdbcTemplate.update(updateSql, newPassword, username);
             
             if (rows > 0) {
@@ -251,7 +281,7 @@ public class AuthService {
     public Map<String, Object> checkUserExists(String username) {
         Map<String, Object> result = new HashMap<>();
         try {
-            String checkSql = "SELECT COUNT(*) FROM user WHERE name = ?";
+            String checkSql = "SELECT COUNT(*) FROM users WHERE name = ?";
             int count = loginJdbcTemplate.queryForObject(checkSql, Integer.class, username);
             
             if (count > 0) {

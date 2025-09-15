@@ -1,10 +1,10 @@
 package com.example.bio_data.entity;
 
 import jakarta.persistence.*;
-import com.example.bio_data.entity.Role;
+
 
 @Entity
-@Table(name = "user")
+@Table(name = "users")
 public class User {
     
     @Id

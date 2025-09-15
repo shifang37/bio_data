@@ -4170,7 +4170,7 @@ public class DatabaseService {
                 
                 logger.info("正在搜索表 {} ({}/{})", tableName, searchedCount, allTables.size());
                 
-                // 发送当前搜索进度
+                // 发送当前搜索进度 
                 Map<String, Object> progressEvent = new HashMap<>();
                 progressEvent.put("type", "progress");
                 progressEvent.put("currentTable", tableName);
@@ -4376,7 +4376,6 @@ public class DatabaseService {
             }
             
             JdbcTemplate jdbcTemplate;
-            String sql;
             
             // 构建ALTER TABLE语句
             StringBuilder alterSql = new StringBuilder();
