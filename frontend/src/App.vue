@@ -53,13 +53,19 @@
               <span>数据库管理</span>
             </el-menu-item>
 
-            <el-menu-item index="/import">
+            <!-- 仅管理员和内部用户可见的数据导入菜单 -->
+            <el-menu-item v-if="currentUser && (currentUser.userType === 'admin' || currentUser.userType === 'internal')" index="/import">
               <el-icon><Upload /></el-icon>
               <span>数据导入</span>
             </el-menu-item>
             <el-menu-item index="/knowledge-graph">
               <el-icon><Share /></el-icon>
               <span>知识图谱</span>
+            </el-menu-item>
+            <!-- 仅管理员可见的权限管理菜单 -->
+            <el-menu-item v-if="currentUser && currentUser.userType === 'admin'" index="/permissions">
+              <el-icon><Setting /></el-icon>
+              <span>权限管理</span>
             </el-menu-item>
           </el-menu>
         </el-aside>
@@ -75,7 +81,7 @@
 <script>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Grid, SwitchButton, Upload, Share } from '@element-plus/icons-vue'
+import { Grid, SwitchButton, Upload, Share, Setting } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { userState } from './utils/api'
 import { knowledgeGraphState } from './utils/knowledgeGraphStore'
@@ -87,7 +93,8 @@ export default {
     Grid,  
     SwitchButton,
     Upload,
-    Share
+    Share,
+    Setting
   },
   setup() {
     const router = useRouter()

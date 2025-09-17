@@ -63,7 +63,7 @@ public class DatabaseController {
     }
 
     /**
-     * 权限验证辅助方法
+     * 权限验证辅助方法（数据库级别）
      */
     private ResponseEntity<?> validatePermission(Long userId, String userType, String dataSource, String operation) {
         if (userId == null || userType == null) {
@@ -87,6 +87,45 @@ public class DatabaseController {
             return ResponseEntity.status(403).body(Map.of("error", permissionResult.get("error")));
         }
         
+        return null; // 权限验证通过
+    }
+    
+    /**
+     * 表级别权限验证辅助方法
+     */
+    private ResponseEntity<?> validateTablePermission(Long userId, String dataSource, String tableName, String operation) {
+        if (userId == null) {
+            logger.warn("权限验证失败: 用户ID为空");
+            return ResponseEntity.status(401).body(Map.of("error", "用户未登录"));
+        }
+        
+        // 确定数据库名称 - 保持原始名称，不进行强制转换
+        String databaseName = dataSource;
+        if (databaseName == null || databaseName.trim().isEmpty()) {
+            databaseName = "default";
+        }
+        // 注意：这里不再强制转换为"default"，保持实际的数据库名称
+        
+        logger.info("开始权限验证: userId={}, dataSource={}, databaseName={}, tableName={}, operation={}", 
+                   userId, dataSource, databaseName, tableName, operation);
+        
+        boolean hasPermission = false;
+        
+        if ("read".equalsIgnoreCase(operation)) {
+            // 对于读权限，直接使用简化的权限检查
+            hasPermission = permissionService.hasPermissionToAccessDatabase(userId, "user", databaseName);
+            logger.info("读权限检查结果: {}", hasPermission);
+        } else if ("write".equalsIgnoreCase(operation)) {
+            hasPermission = permissionService.hasPermissionToModifyTable(userId, databaseName, tableName);
+            logger.info("写权限检查结果: {}", hasPermission);
+        }
+        
+        if (!hasPermission) {
+            logger.warn("权限验证失败: 用户{}对{}.{}没有{}权限", userId, databaseName, tableName, operation);
+            return ResponseEntity.status(403).body(Map.of("error", "权限不足，无法执行此操作"));
+        }
+        
+        logger.info("权限验证通过: 用户{}对{}.{}有{}权限", userId, databaseName, tableName, operation);
         return null; // 权限验证通过
     }
 
@@ -401,12 +440,12 @@ public class DatabaseController {
             Long userId = extractUserId(request);
             String userType = (String) request.get("userType");
             
-            // 权限验证
+            // 表级别权限验证
             if (userId == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
             }
             
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "write");
+            ResponseEntity<?> permissionCheck = validateTablePermission(userId, dataSource, tableName, "write");
             if (permissionCheck != null) {
                 return permissionCheck;
             }
@@ -457,12 +496,12 @@ public class DatabaseController {
             Long userId = extractUserId(request);
             String userType = (String) request.get("userType");
             
-            // 权限验证
+            // 表级别权限验证
             if (userId == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
             }
             
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "write");
+            ResponseEntity<?> permissionCheck = validateTablePermission(userId, dataSource, tableName, "write");
             if (permissionCheck != null) {
                 return permissionCheck;
             }
@@ -518,12 +557,12 @@ public class DatabaseController {
             Long userId = extractUserId(request);
             String userType = (String) request.get("userType");
             
-            // 权限验证
+            // 表级别权限验证
             if (userId == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
             }
             
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "write");
+            ResponseEntity<?> permissionCheck = validateTablePermission(userId, dataSource, tableName, "write");
             if (permissionCheck != null) {
                 return permissionCheck;
             }
@@ -752,14 +791,27 @@ public class DatabaseController {
         try {
             // 获取用户信息
             Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
             String dataSourceName = (String) request.get("dataSource");
             String databaseName = (String) request.get("databaseName");
             
-            // 验证权限
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, databaseName, "write");
-            if (permissionCheck != null) {
-                return permissionCheck;
+            // 权限验证：检查用户是否有在该数据库中创建表的权限
+            if (userId == null) {
+                return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
+            }
+            
+            // 使用默认数据源如果未指定
+            if (dataSourceName == null || dataSourceName.trim().isEmpty()) {
+                dataSourceName = "login";
+            }
+            
+            // 映射数据源名称到数据库名称
+            String targetDatabaseName = databaseName;
+            if (targetDatabaseName == null || targetDatabaseName.trim().isEmpty()) {
+                targetDatabaseName = dataSourceName;
+            }
+            
+            if (!permissionService.hasPermissionToCreateTable(userId, targetDatabaseName)) {
+                return ResponseEntity.status(403).body(Map.of("error", "权限不足，您没有在数据库 '" + targetDatabaseName + "' 中创建表的权限"));
             }
             
             String tableName = (String) request.get("tableName");
@@ -826,18 +878,22 @@ public class DatabaseController {
             String databaseName = (String) request.get("databaseName");
             String tableName = (String) request.get("tableName");
             
-            // 验证权限
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, databaseName, "write");
-            if (permissionCheck != null) {
-                return permissionCheck;
-            }
-            
             if (tableName == null || tableName.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "表名不能为空"));
             }
             
             if (databaseName == null || databaseName.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "数据库名称不能为空"));
+            }
+            
+            // 表级别权限验证 - 只有被明确授权的内部用户才能删除表
+            if (userId == null) {
+                return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
+            }
+            
+            ResponseEntity<?> permissionCheck = validateTablePermission(userId, databaseName, tableName, "write");
+            if (permissionCheck != null) {
+                return permissionCheck;
             }
             
             // 使用默认数据源如果未指定
@@ -900,12 +956,12 @@ public class DatabaseController {
             Boolean useTransaction = (Boolean) request.get("useTransaction");
             String importStrategy = (String) request.get("importStrategy");
             
-            // 权限验证
+            // 表级别权限验证
             if (userId == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
             }
             
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "write");
+            ResponseEntity<?> permissionCheck = validateTablePermission(userId, dataSource, tableName, "write");
             if (permissionCheck != null) {
                 return permissionCheck;
             }
@@ -964,18 +1020,22 @@ public class DatabaseController {
             String dataSource = (String) request.get("dataSource");
             String tableName = (String) request.get("tableName");
             Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
             Boolean useTransaction = (Boolean) request.get("useTransaction");
             String importStrategy = (String) request.get("importStrategy");
             
-            // 权限验证
+            // 权限验证：检查用户是否有在该数据库中创建表的权限
             if (userId == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
             }
             
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "write");
-            if (permissionCheck != null) {
-                return permissionCheck;
+            // 映射数据源名称到数据库名称
+            String targetDatabaseName = dataSource;
+            if (targetDatabaseName == null || targetDatabaseName.trim().isEmpty()) {
+                targetDatabaseName = "default";
+            }
+            
+            if (!permissionService.hasPermissionToCreateTable(userId, targetDatabaseName)) {
+                return ResponseEntity.status(403).body(Map.of("error", "权限不足，您没有在数据库 '" + targetDatabaseName + "' 中创建表的权限"));
             }
             
             @SuppressWarnings("unchecked")
@@ -1051,7 +1111,8 @@ public class DatabaseController {
                 return ResponseEntity.status(401).body(Map.of("error", "用户ID无效"));
             }
             
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+            // CSV验证是为了导入数据，需要写权限
+            ResponseEntity<?> permissionCheck = validateTablePermission(userId, dataSource, tableName, "write");
             if (permissionCheck != null) {
                 return permissionCheck;
             }
@@ -1490,12 +1551,11 @@ public class DatabaseController {
                 ));
             }
             
-            // 检查权限
-            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "write");
-            if (permissionCheck != null) {
-                return ResponseEntity.status(permissionCheck.getStatusCode()).body(Map.of(
+            // 修改表结构是高风险操作，只有管理员可以执行
+            if (!permissionService.isAdmin(userId, "admin")) {
+                return ResponseEntity.status(403).body(Map.of(
                     "success", false,
-                    "error", "没有修改数据库的权限"
+                    "error", "权限不足，只有管理员可以修改表结构"
                 ));
             }
             

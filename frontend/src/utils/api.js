@@ -455,4 +455,127 @@ export const databaseApi = {
   }
 }
 
+// 权限管理API对象
+export const permissionApi = {
+  // 为内部用户授权数据库级写权限
+  grantDatabaseWriteAccess(data) {
+    return api.post('/api/admin/permissions/grant-database', data)
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 撤销用户的数据库级写权限
+  revokeDatabaseWriteAccess(data) {
+    return api.delete('/api/admin/permissions/revoke-database', { data })
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 为内部用户授权表写权限
+  grantTableWriteAccess(data) {
+    return api.post('/api/admin/permissions/grant', data)
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 撤销用户的表写权限
+  revokeTableWriteAccess(data) {
+    return api.post('/api/admin/permissions/revoke', data)
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 获取所有权限授权记录
+  getAllPermissions(adminId) {
+    return api.get('/api/admin/permissions/all', {
+      params: { adminId }
+    })
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 获取特定用户的权限记录
+  getUserPermissions(internalUserId, adminId) {
+    return api.get(`/api/admin/permissions/user/${internalUserId}`, {
+      params: { adminId }
+    })
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 创建内部用户
+  createInternalUser(data) {
+    return api.post('/api/admin/permissions/create-internal-user', data)
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 获取所有内部用户列表
+  getAllInternalUsers(adminId) {
+    return api.get('/api/admin/permissions/internal-users', {
+      params: { adminId }
+    })
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 批量授权权限
+  grantBatchTableWriteAccess(data) {
+    return api.post('/api/admin/permissions/grant-batch', data)
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 检查权限状态
+  checkPermission(userId, databaseName, tableName) {
+    return api.get('/api/admin/permissions/check', {
+      params: { userId, databaseName, tableName }
+    })
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 获取所有可用数据库列表（仅管理员）
+  getAllDatabases(adminId) {
+    return api.get('/api/admin/permissions/databases', {
+      params: { adminId }
+    })
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  },
+
+  // 获取指定数据库的所有表列表（仅管理员）
+  getTablesInDatabase(databaseName, adminId) {
+    return api.get(`/api/admin/permissions/databases/${databaseName}/tables`, {
+      params: { adminId }
+    })
+      .then(response => response.data)
+      .catch(error => {
+        throw error.response?.data || error.message
+      })
+  }
+}
+
 export default api 
