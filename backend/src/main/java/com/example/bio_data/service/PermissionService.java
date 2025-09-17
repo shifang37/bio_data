@@ -35,6 +35,7 @@ public class PermissionService {
             user.setId(rs.getLong("id"));
             user.setName(rs.getString("name"));
             user.setPassword(rs.getString("password"));
+            user.setEmail(rs.getString("email"));
             String roleValue = rs.getString("role");
             user.setRole(roleValue);
             return user;
@@ -415,6 +416,9 @@ public class PermissionService {
             User user = loginJdbcTemplate.queryForObject(sql, userRowMapper, userId);
             if (user != null) {
                 result.put("success", true);
+                result.put("userId", user.getId());
+                result.put("username", user.getName());
+                result.put("email", user.getEmail());
                 result.put("userType", getUserTypeFromRole(user.getRole()));
                 result.put("role", user.getRoleValue());
                 result.put("permission", user.getRoleValue()); // 兼容旧版本

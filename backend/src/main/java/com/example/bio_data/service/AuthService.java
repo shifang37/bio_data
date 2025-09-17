@@ -34,6 +34,7 @@ public class AuthService {
             user.setId(rs.getLong("id"));
             user.setName(rs.getString("name"));
             user.setPassword(rs.getString("password"));
+            user.setEmail(rs.getString("email"));
             String roleValue = rs.getString("role");
             user.setRole(roleValue);
             return user;
@@ -54,6 +55,7 @@ public class AuthService {
                 result.put("userType", getUserType(user.getRole()));
                 result.put("userId", user.getId());
                 result.put("username", user.getName());
+                result.put("email", user.getEmail());
                 result.put("role", user.getRoleValue());
                 result.put("permission", user.getRoleValue()); // 兼容旧版本
                 result.put("message", "登录成功");

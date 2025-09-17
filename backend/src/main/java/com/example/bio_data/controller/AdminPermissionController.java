@@ -137,8 +137,9 @@ public class AdminPermissionController {
             Long adminId = Long.valueOf(request.get("adminId").toString());
             String username = request.get("username").toString();
             String password = request.get("password").toString();
+            String email = request.containsKey("email") ? (String) request.get("email") : null;
             
-            Map<String, Object> result = adminPermissionService.createInternalUser(adminId, username, password);
+            Map<String, Object> result = adminPermissionService.createInternalUser(adminId, username, password, email);
             return ResponseEntity.ok(result);
             
         } catch (Exception e) {

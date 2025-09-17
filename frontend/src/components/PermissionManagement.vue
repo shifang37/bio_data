@@ -26,7 +26,13 @@
       <h3>内部用户列表</h3>
       <el-table :data="internalUsers" style="width: 100%" v-loading="loadingUsers">
         <el-table-column prop="id" label="用户ID" width="80" />
-        <el-table-column prop="name" label="用户名" />
+        <el-table-column prop="name" label="用户名" width="120" />
+        <el-table-column prop="email" label="邮箱" width="180">
+          <template #default="{ row }">
+            <span v-if="row.email">{{ row.email }}</span>
+            <span v-else style="color: #999;">未设置</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="role" label="角色" width="100" />
         <el-table-column label="操作" width="200">
           <template #default="{ row }">
@@ -95,6 +101,9 @@
         </el-form-item>
         <el-form-item label="密码">
           <el-input v-model="createUserForm.password" type="password" placeholder="请输入密码" />
+        </el-form-item>
+        <el-form-item label="邮箱">
+          <el-input v-model="createUserForm.email" placeholder="请输入邮箱（可选）" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -238,7 +247,8 @@ export default {
       
       createUserForm: {
         username: '',
-        password: ''
+        password: '',
+        email: ''
       },
       
       grantForm: {
@@ -359,13 +369,14 @@ export default {
         const response = await permissionApi.createInternalUser({
           adminId: this.adminId,
           username: this.createUserForm.username,
-          password: this.createUserForm.password
+          password: this.createUserForm.password,
+          email: this.createUserForm.email
         })
         
         if (response.success) {
           ElMessage.success('创建内部用户成功')
           this.showCreateUserDialog = false
-          this.createUserForm = { username: '', password: '' }
+          this.createUserForm = { username: '', password: '', email: '' }
           this.loadInternalUsers()
         } else {
           ElMessage.error(response.error || '创建用户失败')

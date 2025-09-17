@@ -42,6 +42,7 @@ public class AdminPermissionService {
             user.setId(rs.getLong("id"));
             user.setName(rs.getString("name"));
             user.setPassword(rs.getString("password"));
+            user.setEmail(rs.getString("email"));
             String roleValue = rs.getString("role");
             user.setRole(roleValue);
             return user;
@@ -332,9 +333,10 @@ public class AdminPermissionService {
      * @param adminId 管理员ID
      * @param username 用户名
      * @param password 密码
+     * @param email 邮箱（可选）
      * @return 操作结果
      */
-    public Map<String, Object> createInternalUser(Long adminId, String username, String password) {
+    public Map<String, Object> createInternalUser(Long adminId, String username, String password, String email) {
         Map<String, Object> result = new HashMap<>();
         
         try {
@@ -356,8 +358,8 @@ public class AdminPermissionService {
             }
             
             // 插入新的内部用户
-            String insertSql = "INSERT INTO users (name, password, role) VALUES (?, ?, ?)";
-            int rows = loginJdbcTemplate.update(insertSql, username, password, Role.INTERNAL.getValue());
+            String insertSql = "INSERT INTO users (name, password, email, role) VALUES (?, ?, ?, ?)";
+            int rows = loginJdbcTemplate.update(insertSql, username, password, email, Role.INTERNAL.getValue());
             
             if (rows > 0) {
                 result.put("success", true);
@@ -393,11 +395,12 @@ public class AdminPermissionService {
                 return result;
             }
             
-            String sql = "SELECT id, name, role FROM users WHERE role = ? ORDER BY id";
+            String sql = "SELECT id, name, email, role FROM users WHERE role = ? ORDER BY id";
             List<Map<String, Object>> users = loginJdbcTemplate.query(sql, (rs, rowNum) -> {
                 Map<String, Object> user = new HashMap<>();
                 user.put("id", rs.getLong("id"));
                 user.put("name", rs.getString("name"));
+                user.put("email", rs.getString("email"));
                 user.put("role", rs.getString("role"));
                 return user;
             }, Role.INTERNAL.getValue());
