@@ -438,7 +438,6 @@ public class DatabaseController {
         try {
             String dataSource = (String) request.get("dataSource");
             Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
             
             // 表级别权限验证
             if (userId == null) {
@@ -494,7 +493,6 @@ public class DatabaseController {
         try {
             String dataSource = (String) request.get("dataSource");
             Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
             
             // 表级别权限验证
             if (userId == null) {
@@ -555,7 +553,6 @@ public class DatabaseController {
         try {
             String dataSource = (String) request.get("dataSource");
             Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
             
             // 表级别权限验证
             if (userId == null) {
@@ -873,7 +870,6 @@ public class DatabaseController {
         try {
             // 获取用户信息
             Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
             String dataSourceName = (String) request.get("dataSource");
             String databaseName = (String) request.get("databaseName");
             String tableName = (String) request.get("tableName");
@@ -952,7 +948,6 @@ public class DatabaseController {
         try {
             String dataSource = (String) request.get("dataSource");
             Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
             Boolean useTransaction = (Boolean) request.get("useTransaction");
             String importStrategy = (String) request.get("importStrategy");
             
@@ -1104,7 +1099,6 @@ public class DatabaseController {
         try {
             String dataSource = (String) request.get("dataSource");
             Long userId = extractUserId(request);
-            String userType = (String) request.get("userType");
             
             // 权限验证
             if (userId == null) {

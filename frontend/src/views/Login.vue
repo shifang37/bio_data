@@ -115,6 +115,38 @@
           </div>
 
           <div class="form-group">
+            <label for="reg-email">邮箱:</label>
+            <input
+              id="reg-email"
+              v-model="registerForm.email"
+              type="email"
+              class="form-input"
+              placeholder="请输入邮箱地址"
+              required
+            />
+            <small class="form-hint">用于接收账户激活邮件</small>
+          </div>
+
+          <div class="form-group">
+            <label for="reg-captcha">验证码:</label>
+            <div class="captcha-container">
+              <input
+                id="reg-captcha"
+                v-model="registerForm.captchaInput"
+                type="text"
+                class="form-input captcha-input"
+                placeholder="请输入验证码"
+                required
+              />
+              <div class="captcha-image" @click="refreshCaptcha">
+                <img v-if="captchaImage" :src="captchaImage" alt="验证码" />
+                <div v-else class="captcha-loading">加载中...</div>
+              </div>
+            </div>
+            <small class="form-hint">点击图片刷新验证码</small>
+          </div>
+
+          <div class="form-group">
             <label for="reg-permission">权限:</label>
             <select
               id="reg-permission"
@@ -251,8 +283,12 @@ export default {
       registerForm: {
         username: '',
         password: '',
+        email: '',
+        captchaInput: '',
         permission: 'user'
       },
+      captchaImage: null,
+      captchaToken: null,
       forgotPasswordForm: {
         username: '',
         newPassword: '',
@@ -260,6 +296,15 @@ export default {
       }
     }
   },
+  watch: {
+    // 监听注册对话框显示状态，自动加载验证码
+    showRegister(newVal) {
+      if (newVal) {
+        this.loadCaptcha()
+      }
+    }
+  },
+  
   methods: {
     switchTab(isAdmin) {
       this.isAdmin = isAdmin
@@ -346,11 +391,28 @@ export default {
       this.success = ''
 
       try {
-        // 只使用用户注册接口，强制权限为user
+        // 验证邮箱格式
+        const emailRegex = /^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/
+        if (!emailRegex.test(this.registerForm.email)) {
+          this.error = '请输入正确的邮箱格式'
+          this.loading = false
+          return
+        }
+
+        // 验证验证码是否填写
+        if (!this.registerForm.captchaInput || !this.captchaToken) {
+          this.error = '请输入验证码'
+          this.loading = false
+          return
+        }
+
+        // 新版本注册接口，包含邮箱和验证码
         const registerData = {
           username: this.registerForm.username,
           password: this.registerForm.password,
-          permission: 'user' // 固定为普通用户
+          email: this.registerForm.email,
+          captchaToken: this.captchaToken,
+          captchaInput: this.registerForm.captchaInput
         }
         
         const response = await api.post('/api/auth/register/user', registerData)
@@ -358,17 +420,24 @@ export default {
         if (response.data.success) {
           this.success = response.data.message
           this.showRegister = false
-          this.registerForm = {
-            username: '',
-            password: '',
-            permission: 'user'
+          this.resetRegisterForm()
+          
+          // 如果需要激活，显示激活提示
+          if (response.data.needActivation) {
+            this.success = '注册成功！请检查邮箱并点击激活链接完成账户激活。'
           }
         } else {
           this.error = response.data.message
+          // 如果验证码错误，刷新验证码
+          if (response.data.message.includes('验证码')) {
+            await this.loadCaptcha()
+          }
         }
       } catch (error) {
         this.error = error.response?.data?.message || '注册失败，请检查网络连接'
         console.error('注册错误:', error)
+        // 注册失败时也刷新验证码
+        await this.loadCaptcha()
       } finally {
         this.loading = false
       }
@@ -391,11 +460,40 @@ export default {
     closeModal() {
       this.showRegister = false
       this.error = ''
+      this.resetRegisterForm()
+    },
+    
+    resetRegisterForm() {
       this.registerForm = {
         username: '',
         password: '',
+        email: '',
+        captchaInput: '',
         permission: 'user'
       }
+      this.captchaImage = null
+      this.captchaToken = null
+    },
+    
+    // 加载验证码
+    async loadCaptcha() {
+      try {
+        const response = await api.get('/api/auth/captcha')
+        if (response.data.success) {
+          this.captchaImage = response.data.captchaImage
+          this.captchaToken = response.data.captchaToken
+        } else {
+          console.error('获取验证码失败:', response.data.message)
+        }
+      } catch (error) {
+        console.error('获取验证码异常:', error)
+      }
+    },
+    
+    // 刷新验证码
+    async refreshCaptcha() {
+      this.registerForm.captchaInput = ''
+      await this.loadCaptcha()
     },
 
     // 忘记密码相关方法
@@ -759,5 +857,42 @@ export default {
   padding: 10px;
   border-radius: 5px;
   border-left: 4px solid #667eea;
+}
+.captcha-container {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.captcha-input {
+  flex: 1;
+}
+
+.captcha-image {
+  width: 120px;
+  height: 40px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f9f9f9;
+  transition: background-color 0.2s;
+}
+
+.captcha-image:hover {
+  background-color: #f0f0f0;
+}
+
+.captcha-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.captcha-loading {
+  font-size: 12px;
+  color: #666;
 }
 </style> 

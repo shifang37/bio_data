@@ -17,28 +17,36 @@ public class User {
     @Column(name = "password", nullable = false, length = 100)
     private String password;
     
-    @Column(name = "email", length = 100)
+    @Column(name = "email", nullable = false, length = 100)
     private String email;
     
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false)
     private Role role;
     
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private UserStatus status;
+    
     // 默认构造函数
     public User() {}
     
     // 带参构造函数
-    public User(String name, String password, Role role) {
+    public User(String name, String password, String email, Role role) {
         this.name = name;
         this.password = password;
+        this.email = email;
         this.role = role;
+        this.status = UserStatus.PENDING; // 默认为待激活状态
     }
     
     // 带参构造函数（支持字符串角色）
-    public User(String name, String password, String roleValue) {
+    public User(String name, String password, String email, String roleValue) {
         this.name = name;
         this.password = password;
+        this.email = email;
         this.role = Role.fromValue(roleValue);
+        this.status = UserStatus.PENDING; // 默认为待激活状态
     }
     
     // Getter和Setter方法
@@ -86,11 +94,51 @@ public class User {
         this.role = Role.fromValue(roleValue);
     }
     
+    public UserStatus getStatus() {
+        return status;
+    }
+    
+    public void setStatus(UserStatus status) {
+        this.status = status;
+    }
+    
+    public void setStatus(String statusValue) {
+        this.status = UserStatus.fromValue(statusValue);
+    }
+    
     /**
      * 获取角色的字符串值
      */
     public String getRoleValue() {
         return role != null ? role.getValue() : null;
+    }
+    
+    /**
+     * 获取状态的字符串值
+     */
+    public String getStatusValue() {
+        return status != null ? status.getValue() : null;
+    }
+    
+    /**
+     * 检查用户是否已激活
+     */
+    public boolean isActive() {
+        return status != null && status.isActive();
+    }
+    
+    /**
+     * 检查用户是否待激活
+     */
+    public boolean isPending() {
+        return status != null && status.isPending();
+    }
+    
+    /**
+     * 检查用户是否被封禁
+     */
+    public boolean isBanned() {
+        return status != null && status.isBanned();
     }
     
     @Override
@@ -100,6 +148,7 @@ public class User {
                 ", name='" + name + '\'' +
                 ", email='" + email + '\'' +
                 ", role=" + (role != null ? role.getValue() : null) +
+                ", status=" + (status != null ? status.getValue() : null) +
                 '}';
     }
 } 

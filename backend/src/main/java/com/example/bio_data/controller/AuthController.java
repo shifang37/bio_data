@@ -2,11 +2,13 @@ package com.example.bio_data.controller;
 
 import com.example.bio_data.service.AuthService;
 import com.example.bio_data.service.PermissionService;
+import com.example.bio_data.service.CaptchaService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -18,6 +20,9 @@ public class AuthController {
     
     @Autowired
     private PermissionService permissionService;
+    
+    @Autowired
+    private CaptchaService captchaService;
 
     /**
      * 统一登录接口 - 允许所有角色用户登录
@@ -101,25 +106,38 @@ public class AuthController {
     }
 
     /**
-     * 用户注册
-     * 只能注册普通用户，角色固定为"guest"
+     * 用户注册（新版本 - 需要邮箱和验证码）
+     * 只能注册普通用户，角色固定为"guest"，状态为"pending"
      */
     @PostMapping("/register/user")
     public ResponseEntity<Map<String, Object>> registerUser(@RequestBody Map<String, String> registerRequest) {
         try {
             String username = registerRequest.get("username");
             String password = registerRequest.get("password");
-            // 用户注册时角色固定为"guest"，不接受前端传递的角色参数
-            String permission = "guest";
+            String email = registerRequest.get("email");
+            String captchaToken = registerRequest.get("captchaToken");
+            String captchaInput = registerRequest.get("captchaInput");
 
-            if (username == null || password == null || username.trim().isEmpty() || password.trim().isEmpty()) {
+            // 参数验证
+            if (username == null || password == null || email == null || 
+                captchaToken == null || captchaInput == null ||
+                username.trim().isEmpty() || password.trim().isEmpty() || 
+                email.trim().isEmpty() || captchaInput.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "用户名和密码不能为空"
+                    "message", "用户名、密码、邮箱和验证码都不能为空"
                 ));
             }
 
-            Map<String, Object> result = authService.registerUser(username, password, permission);
+            // 简单的邮箱格式验证
+            if (!email.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "邮箱格式不正确"
+                ));
+            }
+
+            Map<String, Object> result = authService.registerUser(username, password, email, captchaToken, captchaInput);
             return ResponseEntity.ok(result);
 
         } catch (Exception e) {
@@ -200,6 +218,86 @@ public class AuthController {
                 "connected", false,
                 "message", "连接测试失败: " + e.getMessage(),
                 "database", "login"
+            ));
+        }
+    }
+
+    /**
+     * 获取图形验证码
+     */
+    @GetMapping("/captcha")
+    public ResponseEntity<Map<String, Object>> getCaptcha() {
+        try {
+            String sessionId = UUID.randomUUID().toString();
+            String captchaImage = captchaService.generateCaptcha(sessionId);
+            
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "captchaToken", sessionId,
+                "captchaImage", captchaImage
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "message", "生成验证码失败: " + e.getMessage()
+            ));
+        }
+    }
+    
+    /**
+     * 激活用户账户
+     */
+    @GetMapping("/activate")
+    public ResponseEntity<Map<String, Object>> activateAccount(@RequestParam String token) {
+        try {
+            if (token == null || token.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "激活令牌不能为空"
+                ));
+            }
+
+            Map<String, Object> result = authService.activateAccount(token);
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "message", "激活异常: " + e.getMessage()
+            ));
+        }
+    }
+    
+    /**
+     * 重新发送激活邮件
+     */
+    @PostMapping("/resend-activation")
+    public ResponseEntity<Map<String, Object>> resendActivationEmail(@RequestBody Map<String, String> request) {
+        try {
+            String email = request.get("email");
+
+            if (email == null || email.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "邮箱不能为空"
+                ));
+            }
+
+            // 简单的邮箱格式验证
+            if (!email.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "邮箱格式不正确"
+                ));
+            }
+
+            Map<String, Object> result = authService.resendActivationEmail(email);
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "message", "重新发送激活邮件异常: " + e.getMessage()
             ));
         }
     }
