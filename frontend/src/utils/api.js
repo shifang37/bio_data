@@ -420,11 +420,8 @@ export const databaseApi = {
   },
 
   // 导出表数据为CSV格式
-  exportTableToCsv(tableName, dataSource, userId, userType, limit = 10000, whereClause = null) {
+  exportTableToCsv(tableName, dataSource, userId, userType, limit = 10000) {
     const params = { dataSource, userId, userType, limit }
-    if (whereClause) {
-      params.whereClause = whereClause
-    }
     return api.get(`/api/database/tables/${tableName}/export/csv`, {
       params,
       responseType: 'blob' // 重要：设置响应类型为blob以处理文件下载
@@ -432,11 +429,8 @@ export const databaseApi = {
   },
 
   // 导出表数据为Excel格式
-  exportTableToExcel(tableName, dataSource, userId, userType, limit = 10000, whereClause = null) {
+  exportTableToExcel(tableName, dataSource, userId, userType, limit = 10000) {
     const params = { dataSource, userId, userType, limit }
-    if (whereClause) {
-      params.whereClause = whereClause
-    }
     return api.get(`/api/database/tables/${tableName}/export/excel`, {
       params,
       responseType: 'blob' // 重要：设置响应类型为blob以处理文件下载
@@ -444,11 +438,8 @@ export const databaseApi = {
   },
 
   // 获取导出文件信息
-  getExportInfo(tableName, dataSource, userId, userType, whereClause = null) {
+  getExportInfo(tableName, dataSource, userId, userType) {
     const params = { dataSource, userId, userType }
-    if (whereClause) {
-      params.whereClause = whereClause
-    }
     return api.get(`/api/database/tables/${tableName}/export/info`, {
       params
     })

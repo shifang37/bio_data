@@ -23,7 +23,7 @@ public class ExportService {
      */
     public StreamingResponseBody exportTableToCsv(String dataSource, String tableName, 
                                                   Long userId, String userType, 
-                                                  Integer limit, String whereClause) {
+                                                  Integer limit) {
         return outputStream -> {
             OutputStreamWriter writer = null;
             try {
@@ -47,12 +47,7 @@ public class ExportService {
                 writer.flush();
                 
                 // 获取表数据
-                List<Map<String, Object>> data;
-                if (whereClause != null && !whereClause.trim().isEmpty()) {
-                    data = databaseService.getTableDataWithWhere(dataSource, tableName, whereClause, limit);
-                } else {
-                    data = databaseService.getTableData(dataSource, tableName, limit);
-                }
+                List<Map<String, Object>> data = databaseService.getTableData(dataSource, tableName, limit);
                 
                 // 写入数据行 - 分批处理避免内存问题
                 int batchSize = 1000; // 每批处理1000行
@@ -98,7 +93,7 @@ public class ExportService {
      */
     public StreamingResponseBody exportTableToExcel(String dataSource, String tableName, 
                                                     Long userId, String userType, 
-                                                    Integer limit, String whereClause) {
+                                                    Integer limit) {
         return outputStream -> {
             Workbook workbook = null;
             try {
@@ -131,12 +126,7 @@ public class ExportService {
                 }
                 
                 // 获取表数据
-                List<Map<String, Object>> data;
-                if (whereClause != null && !whereClause.trim().isEmpty()) {
-                    data = databaseService.getTableDataWithWhere(dataSource, tableName, whereClause, limit);
-                } else {
-                    data = databaseService.getTableData(dataSource, tableName, limit);
-                }
+                List<Map<String, Object>> data = databaseService.getTableData(dataSource, tableName, limit);
                 
                 // 写入数据行 - SXSSFWorkbook自动管理内存
                 int rowIndex = 1;
@@ -203,19 +193,13 @@ public class ExportService {
      * 获取导出文件的基本信息
      */
     public Map<String, Object> getExportInfo(String dataSource, String tableName, 
-                                             Long userId, String userType, 
-                                             String whereClause) {
+                                             Long userId, String userType) {
         try {
             // 获取表列信息
             List<Map<String, Object>> columns = databaseService.getTableColumns(dataSource, tableName);
             
             // 获取数据行数
-            Integer totalRows;
-            if (whereClause != null && !whereClause.trim().isEmpty()) {
-                totalRows = databaseService.getTableDataCountWithWhere(dataSource, tableName, whereClause);
-            } else {
-                totalRows = databaseService.getTableRowCount(dataSource, tableName);
-            }
+            Integer totalRows = databaseService.getTableRowCount(dataSource, tableName);
             
             return Map.of(
                 "tableName", tableName,

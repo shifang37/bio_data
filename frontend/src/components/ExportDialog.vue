@@ -62,16 +62,32 @@
             </select>
           </div>
 
-          <!-- WHERE条件 -->
+          <!-- 导出路径选择 -->
           <div class="option-group">
-            <label for="whereClause">WHERE条件 (可选):</label>
-            <textarea 
-              id="whereClause" 
-              v-model="whereClause" 
-              placeholder="例如: id > 100 AND status = 'active'"
-              rows="3"
-            ></textarea>
-            <small class="help-text">输入SQL WHERE条件来过滤要导出的数据</small>
+            <label for="exportPath">导出到:</label>
+            <div class="path-selection">
+              <div class="path-input-container">
+                <input 
+                  type="text" 
+                  id="exportPath" 
+                  v-model="exportPath" 
+                  placeholder="点击右侧按钮选择保存位置..."
+                  readonly
+                  class="path-input"
+                >
+                <div class="path-display">
+                  <span v-if="exportPath" class="selected-path">{{ exportPath }}</span>
+                  <span v-else class="placeholder-text">默认下载文件夹</span>
+                </div>
+              </div>
+              <button type="button" @click="selectExportPath" class="btn-path">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 6L16 12L10 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                选择位置
+              </button>
+            </div>
+            <small class="help-text">选择文件保存位置，如不选择将保存到默认下载文件夹</small>
           </div>
 
           <!-- 列选择 -->
@@ -141,7 +157,7 @@ export default {
   setup(props, { emit }) {
     const exportFormat = ref('csv')
     const limit = ref(10000)
-    const whereClause = ref('')
+    const exportPath = ref('')
     const selectedColumns = ref([])
     const exportInfo = ref(null)
     const isExporting = ref(false)
@@ -175,8 +191,7 @@ export default {
           props.tableName,
           props.dataSource,
           userInfo.userId,
-          userInfo.userType,
-          whereClause.value || null
+          userInfo.userType
         )
         
         if (response.data.success) {
@@ -202,6 +217,56 @@ export default {
       selectedColumns.value = []
     }
 
+    // 选择的文件夹句柄
+    const selectedDirHandle = ref(null)
+
+    // 默认下载函数
+    const downloadToDefault = (blob, fileName) => {
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      progress.value = 100
+      progressText.value = '文件已下载到默认文件夹'
+    }
+
+    // 选择导出路径
+    const selectExportPath = async () => {
+      try {
+        // 使用File System Access API来选择目录（Chrome 86+支持）
+        if ('showDirectoryPicker' in window) {
+          const dirHandle = await window.showDirectoryPicker()
+          selectedDirHandle.value = dirHandle
+          
+          // 显示文件夹名称作为路径信息
+          exportPath.value = dirHandle.name
+          
+          // 检查是否有写入权限
+          try {
+            await dirHandle.requestPermission({ mode: 'readwrite' })
+          } catch (permError) {
+            console.warn('写入权限检查失败:', permError)
+            // 继续尝试，可能仍然可以写入
+          }
+        } else {
+          // 对于不支持的浏览器，显示提示信息
+          alert('您的浏览器不支持文件夹选择功能。\n文件将保存到默认下载文件夹中。')
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('选择路径失败:', error)
+          // 对于其他错误，也显示友好的提示
+          alert('无法选择保存位置，文件将保存到默认下载文件夹中。')
+        }
+      }
+    }
+
     // 开始导出
     const startExport = async () => {
       if (!canExport.value) return
@@ -222,8 +287,7 @@ export default {
             props.dataSource,
             userInfo.userId,
             userInfo.userType,
-            limit.value || null,
-            whereClause.value || null
+            limit.value || null
           )
         } else {
           response = await databaseApi.exportTableToExcel(
@@ -231,34 +295,58 @@ export default {
             props.dataSource,
             userInfo.userId,
             userInfo.userType,
-            limit.value || null,
-            whereClause.value || null
+            limit.value || null
           )
         }
 
         progress.value = 80
-        progressText.value = '正在下载文件...'
+        progressText.value = '正在保存文件...'
 
-        // 创建下载链接
+        // 创建文件数据
         const blob = new Blob([response.data], {
           type: exportFormat.value === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         })
         
-        const url = window.URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        
         const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
         const extension = exportFormat.value === 'csv' ? 'csv' : 'xlsx'
-        link.download = `${props.tableName}_export_${timestamp}.${extension}`
-        
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        window.URL.revokeObjectURL(url)
+        const fileName = `${props.tableName}_export_${timestamp}.${extension}`
 
-        progress.value = 100
-        progressText.value = '导出完成！'
+        // 如果用户选择了文件夹，使用File System Access API保存
+        if (selectedDirHandle.value) {
+          try {
+            // 先检查权限
+            const permission = await selectedDirHandle.value.requestPermission({ mode: 'readwrite' })
+            if (permission !== 'granted') {
+              throw new Error('没有写入权限')
+            }
+            
+            const fileHandle = await selectedDirHandle.value.getFileHandle(fileName, { create: true })
+            const writable = await fileHandle.createWritable()
+            await writable.write(blob)
+            await writable.close()
+            
+            progress.value = 100
+            progressText.value = `文件已保存到: ${exportPath.value}/${fileName}`
+          } catch (error) {
+            console.error('保存到指定文件夹失败:', error)
+            
+            // 根据错误类型提供不同的提示
+            let errorMessage = '保存失败，将使用默认下载'
+            if (error.message.includes('权限') || error.message.includes('permission')) {
+              errorMessage = '没有写入权限，将使用默认下载'
+            } else if (error.message.includes('网络') || error.message.includes('network')) {
+              errorMessage = '网络错误，将使用默认下载'
+            }
+            
+            alert(`${errorMessage}`)
+            
+            // 如果保存失败，回退到默认下载
+            downloadToDefault(blob, fileName)
+          }
+        } else {
+          // 如果没有选择文件夹，使用默认下载
+          downloadToDefault(blob, fileName)
+        }
 
         setTimeout(() => {
           close()
@@ -287,7 +375,7 @@ export default {
     return {
       exportFormat,
       limit,
-      whereClause,
+      exportPath,
       selectedColumns,
       exportInfo,
       isExporting,
@@ -296,6 +384,7 @@ export default {
       canExport,
       selectAllColumns,
       deselectAllColumns,
+      selectExportPath,
       startExport,
       close,
       handleOverlayClick
@@ -446,6 +535,99 @@ textarea {
   color: #666;
   font-size: 12px;
   margin-top: 4px;
+}
+
+.path-selection {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.path-input-container {
+  flex: 1;
+  position: relative;
+  background: white;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.path-input-container:hover {
+  border-color: #007bff;
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.1);
+}
+
+.path-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: #495057;
+  cursor: pointer;
+  outline: none;
+}
+
+.path-display {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  pointer-events: none;
+  background: white;
+}
+
+.selected-path {
+  color: #28a745;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.placeholder-text {
+  color: #6c757d;
+  font-style: italic;
+  font-size: 14px;
+}
+
+.btn-path {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  color: white;
+  border: none;
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+}
+
+.btn-path:hover {
+  background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+.btn-path:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+}
+
+.btn-path svg {
+  transition: transform 0.2s ease;
+}
+
+.btn-path:hover svg {
+  transform: translateX(2px);
 }
 
 .column-selection {

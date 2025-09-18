@@ -1591,8 +1591,7 @@ public class DatabaseController {
             @RequestParam(required = false) String dataSource,
             @RequestParam(required = false) Long userId,
             @RequestParam(required = false) String userType,
-            @RequestParam(required = false, defaultValue = "10000") Integer limit,
-            @RequestParam(required = false) String whereClause) {
+            @RequestParam(required = false, defaultValue = "10000") Integer limit) {
         try {
             // 权限验证
             ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
@@ -1603,7 +1602,7 @@ public class DatabaseController {
             String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
             
             StreamingResponseBody responseBody = exportService.exportTableToCsv(
-                actualDataSource, tableName, userId, userType, limit, whereClause);
+                actualDataSource, tableName, userId, userType, limit);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
@@ -1629,8 +1628,7 @@ public class DatabaseController {
             @RequestParam(required = false) String dataSource,
             @RequestParam(required = false) Long userId,
             @RequestParam(required = false) String userType,
-            @RequestParam(required = false, defaultValue = "10000") Integer limit,
-            @RequestParam(required = false) String whereClause) {
+            @RequestParam(required = false, defaultValue = "10000") Integer limit) {
         try {
             // 权限验证
             ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
@@ -1641,7 +1639,7 @@ public class DatabaseController {
             String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
             
             StreamingResponseBody responseBody = exportService.exportTableToExcel(
-                actualDataSource, tableName, userId, userType, limit, whereClause);
+                actualDataSource, tableName, userId, userType, limit);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
@@ -1666,8 +1664,7 @@ public class DatabaseController {
             @PathVariable String tableName,
             @RequestParam(required = false) String dataSource,
             @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) String userType,
-            @RequestParam(required = false) String whereClause) {
+            @RequestParam(required = false) String userType) {
         try {
             // 权限验证
             ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
@@ -1678,7 +1675,7 @@ public class DatabaseController {
             String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
             
             Map<String, Object> exportInfo = exportService.getExportInfo(
-                actualDataSource, tableName, userId, userType, whereClause);
+                actualDataSource, tableName, userId, userType);
 
             return ResponseEntity.ok(Map.of(
                 "success", true,
