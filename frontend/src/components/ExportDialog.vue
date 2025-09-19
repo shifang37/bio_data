@@ -9,7 +9,7 @@
       <div class="export-dialog-content">
         <!-- 表信息显示 -->
         <div class="table-info" v-if="exportInfo">
-          <h4>表信息</h4>
+          <h4>{{ searchValue ? '搜索结果导出信息' : '表信息' }}</h4>
           <div class="info-grid">
             <div class="info-item">
               <label>表名:</label>
@@ -19,12 +19,20 @@
               <label>数据源:</label>
               <span>{{ exportInfo.dataSource }}</span>
             </div>
+            <div class="info-item" v-if="searchValue">
+              <label>搜索值:</label>
+              <span>{{ searchValue }}</span>
+            </div>
+            <div class="info-item" v-if="searchValue">
+              <label>搜索类型:</label>
+              <span>{{ searchType === 'exact' ? '精确匹配' : '模糊匹配' }}</span>
+            </div>
             <div class="info-item">
               <label>列数:</label>
               <span>{{ exportInfo.columnCount }}</span>
             </div>
             <div class="info-item">
-              <label>总行数:</label>
+              <label>{{ searchValue ? '匹配行数' : '总行数' }}:</label>
               <span>{{ exportInfo.totalRows }}</span>
             </div>
           </div>
@@ -133,7 +141,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { databaseApi } from '../utils/api'
 import { userState } from '../utils/api'
 
@@ -151,6 +159,14 @@ export default {
     dataSource: {
       type: String,
       default: 'login'
+    },
+    searchValue: {
+      type: String,
+      default: ''
+    },
+    searchType: {
+      type: String,
+      default: 'fuzzy'
     }
   },
   emits: ['close'],
@@ -164,22 +180,33 @@ export default {
     const progress = ref(0)
     const progressText = ref('')
 
+    // 创建对 props 的响应式引用，供模板使用
+    const searchValue = computed(() => props.searchValue)
+    const searchType = computed(() => props.searchType)
+
     // 计算属性
     const canExport = computed(() => {
       return exportInfo.value && selectedColumns.value.length > 0
     })
 
     // 监听表名变化，重新加载导出信息
-    watch(() => props.tableName, async (newTableName) => {
+    watch(() => props.tableName, (newTableName) => {
       if (newTableName && props.visible) {
-        await loadExportInfo()
+        loadExportInfo()
       }
     })
 
     // 监听对话框显示状态
-    watch(() => props.visible, async (newVisible) => {
+    watch(() => props.visible, (newVisible) => {
       if (newVisible && props.tableName) {
-        await loadExportInfo()
+        loadExportInfo()
+      }
+    })
+
+    // 监听搜索参数变化
+    watch(() => [props.searchValue, props.searchType], () => {
+      if (props.visible && props.tableName) {
+        loadExportInfo()
       }
     })
 
@@ -187,12 +214,27 @@ export default {
     const loadExportInfo = async () => {
       try {
         const userInfo = userState.getUserInfo()
-        const response = await databaseApi.getExportInfo(
-          props.tableName,
-          props.dataSource,
-          userInfo.userId,
-          userInfo.userType
-        )
+        
+        let response
+        if (props.searchValue) {
+          // 如果有搜索值，获取搜索结果信息
+          response = await databaseApi.getSearchResultExportInfo(
+            props.tableName,
+            props.dataSource,
+            userInfo.userId,
+            userInfo.userType,
+            props.searchValue,
+            props.searchType
+          )
+        } else {
+          // 否则获取全表信息
+          response = await databaseApi.getExportInfo(
+            props.tableName,
+            props.dataSource,
+            userInfo.userId,
+            userInfo.userType
+          )
+        }
         
         if (response.data.success) {
           exportInfo.value = response.data.exportInfo
@@ -282,21 +324,49 @@ export default {
 
         let response
         if (exportFormat.value === 'csv') {
-          response = await databaseApi.exportTableToCsv(
-            props.tableName,
-            props.dataSource,
-            userInfo.userId,
-            userInfo.userType,
-            limit.value || null
-          )
+          if (props.searchValue) {
+            // 导出搜索结果
+            response = await databaseApi.exportSearchResultToCsv(
+              props.tableName,
+              props.dataSource,
+              userInfo.userId,
+              userInfo.userType,
+              props.searchValue,
+              props.searchType,
+              limit.value || null
+            )
+          } else {
+            // 导出全表数据
+            response = await databaseApi.exportTableToCsv(
+              props.tableName,
+              props.dataSource,
+              userInfo.userId,
+              userInfo.userType,
+              limit.value || null
+            )
+          }
         } else {
-          response = await databaseApi.exportTableToExcel(
-            props.tableName,
-            props.dataSource,
-            userInfo.userId,
-            userInfo.userType,
-            limit.value || null
-          )
+          if (props.searchValue) {
+            // 导出搜索结果
+            response = await databaseApi.exportSearchResultToExcel(
+              props.tableName,
+              props.dataSource,
+              userInfo.userId,
+              userInfo.userType,
+              props.searchValue,
+              props.searchType,
+              limit.value || null
+            )
+          } else {
+            // 导出全表数据
+            response = await databaseApi.exportTableToExcel(
+              props.tableName,
+              props.dataSource,
+              userInfo.userId,
+              userInfo.userType,
+              limit.value || null
+            )
+          }
         }
 
         progress.value = 80
@@ -309,7 +379,8 @@ export default {
         
         const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
         const extension = exportFormat.value === 'csv' ? 'csv' : 'xlsx'
-        const fileName = `${props.tableName}_export_${timestamp}.${extension}`
+        const filePrefix = props.searchValue ? `${props.tableName}_search_result_export` : `${props.tableName}_export`
+        const fileName = `${filePrefix}_${timestamp}.${extension}`
 
         // 如果用户选择了文件夹，使用File System Access API保存
         if (selectedDirHandle.value) {
@@ -381,6 +452,8 @@ export default {
       isExporting,
       progress,
       progressText,
+      searchValue,
+      searchType,
       canExport,
       selectAllColumns,
       deselectAllColumns,
@@ -404,7 +477,7 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 2100;
 }
 
 .export-dialog {

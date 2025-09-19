@@ -1690,4 +1690,119 @@ public class DatabaseController {
             ));
         }
     }
+
+    /**
+     * 导出搜索结果为CSV格式
+     */
+    @GetMapping("/tables/{tableName}/export/search-result/csv")
+    public ResponseEntity<StreamingResponseBody> exportSearchResultToCsv(
+            @PathVariable String tableName,
+            @RequestParam(required = false) String dataSource,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String userType,
+            @RequestParam String searchValue,
+            @RequestParam(required = false, defaultValue = "fuzzy") String searchType,
+            @RequestParam(required = false, defaultValue = "10000") Integer limit) {
+        try {
+            // 权限验证
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+            if (permissionCheck != null) {
+                return ResponseEntity.status(permissionCheck.getStatusCode()).body(null);
+            }
+
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
+            
+            StreamingResponseBody responseBody = exportService.exportSearchResultToCsv(
+                actualDataSource, tableName, userId, userType, searchValue, searchType, limit);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            headers.setContentDispositionFormData("attachment", tableName + "_search_result_export.csv");
+            headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(responseBody);
+
+        } catch (Exception e) {
+            logger.error("搜索结果CSV导出失败: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    /**
+     * 导出搜索结果为Excel格式
+     */
+    @GetMapping("/tables/{tableName}/export/search-result/excel")
+    public ResponseEntity<StreamingResponseBody> exportSearchResultToExcel(
+            @PathVariable String tableName,
+            @RequestParam(required = false) String dataSource,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String userType,
+            @RequestParam String searchValue,
+            @RequestParam(required = false, defaultValue = "fuzzy") String searchType,
+            @RequestParam(required = false, defaultValue = "10000") Integer limit) {
+        try {
+            // 权限验证
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+            if (permissionCheck != null) {
+                return ResponseEntity.status(permissionCheck.getStatusCode()).body(null);
+            }
+
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
+            
+            StreamingResponseBody responseBody = exportService.exportSearchResultToExcel(
+                actualDataSource, tableName, userId, userType, searchValue, searchType, limit);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            headers.setContentDispositionFormData("attachment", tableName + "_search_result_export.xlsx");
+            headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(responseBody);
+
+        } catch (Exception e) {
+            logger.error("搜索结果Excel导出失败: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    /**
+     * 获取搜索结果导出信息
+     */
+    @GetMapping("/tables/{tableName}/export/search-result/info")
+    public ResponseEntity<?> getSearchResultExportInfo(
+            @PathVariable String tableName,
+            @RequestParam(required = false) String dataSource,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String userType,
+            @RequestParam String searchValue,
+            @RequestParam(required = false, defaultValue = "fuzzy") String searchType) {
+        try {
+            // 权限验证
+            ResponseEntity<?> permissionCheck = validatePermission(userId, userType, dataSource, "read");
+            if (permissionCheck != null) {
+                return permissionCheck;
+            }
+
+            String actualDataSource = (dataSource != null && !dataSource.trim().isEmpty()) ? dataSource : "login";
+            
+            Map<String, Object> exportInfo = exportService.getSearchResultExportInfo(
+                actualDataSource, tableName, userId, userType, searchValue, searchType);
+
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "exportInfo", exportInfo
+            ));
+
+        } catch (Exception e) {
+            logger.error("获取搜索结果导出信息失败: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "error", "获取搜索结果导出信息失败: " + e.getMessage()
+            ));
+        }
+    }
 } 

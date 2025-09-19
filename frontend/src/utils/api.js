@@ -443,6 +443,32 @@ export const databaseApi = {
     return api.get(`/api/database/tables/${tableName}/export/info`, {
       params
     })
+  },
+
+  // 导出搜索结果为CSV格式
+  exportSearchResultToCsv(tableName, dataSource, userId, userType, searchValue, searchType = 'fuzzy', limit = 10000) {
+    const params = { dataSource, userId, userType, searchValue, searchType, limit }
+    return api.get(`/api/database/tables/${tableName}/export/search-result/csv`, {
+      params,
+      responseType: 'blob' // 重要：设置响应类型为blob以处理文件下载
+    })
+  },
+
+  // 导出搜索结果为Excel格式
+  exportSearchResultToExcel(tableName, dataSource, userId, userType, searchValue, searchType = 'fuzzy', limit = 10000) {
+    const params = { dataSource, userId, userType, searchValue, searchType, limit }
+    return api.get(`/api/database/tables/${tableName}/export/search-result/excel`, {
+      params,
+      responseType: 'blob' // 重要：设置响应类型为blob以处理文件下载
+    })
+  },
+
+  // 获取搜索结果导出信息
+  getSearchResultExportInfo(tableName, dataSource, userId, userType, searchValue, searchType = 'fuzzy') {
+    const params = { dataSource, userId, userType, searchValue, searchType }
+    return api.get(`/api/database/tables/${tableName}/export/search-result/info`, {
+      params
+    })
   }
 }
 

@@ -513,6 +513,14 @@
             刷新数据
           </el-button>
           <el-button 
+            type="success" 
+            :icon="Download"
+            @click="showSearchExportDialog(selectedTable)" 
+            style="margin-left: 10px;"
+          >
+            {{ fieldSearchResult.searchValue ? '导出搜索结果' : '导出表数据' }}
+          </el-button>
+          <el-button 
             v-if="canModifyCurrentDatabase"
             type="success" 
             @click="showAddDataDialog" 
@@ -1411,6 +1419,8 @@
       :visible="exportDialogVisible"
       :table-name="exportTableName"
       :data-source="selectedDatabase"
+      :search-value="fieldSearchResult.searchValue || ''"
+      :search-type="currentSearchType || 'fuzzy'"
       @close="closeExportDialog"
     />
   </div>
@@ -1950,6 +1960,12 @@ export default {
       exportDialogVisible.value = true
     }
 
+    // 显示搜索结果导出对话框
+    const showSearchExportDialog = (tableName) => {
+      exportTableName.value = tableName
+      exportDialogVisible.value = true
+    }
+
     // 关闭导出对话框
     const closeExportDialog = () => {
       exportDialogVisible.value = false
@@ -2253,7 +2269,7 @@ export default {
             closeSearchProgressDialog()
             
             // 显示结果弹窗
-            if (data.tables && data.tables.length > 0) {
+            if(data.tables && data.tables.length > 0) {
               createNewSearchDialog(searchValue, data)
             } else {
               ElMessage.info('没有找到包含该值的表')
@@ -4146,6 +4162,7 @@ export default {
       exportDialogVisible,
       exportTableName,
       showExportDialog,
+      showSearchExportDialog,
       closeExportDialog
     }
   }
